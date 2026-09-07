@@ -46,6 +46,7 @@
    <file role="doc" name="CREDITS"/>
    <file role="doc" name="LICENSE"/>
    <file role="doc" name="README.md"/>
+   <file role="doc" name="UPGRADE.md"/>
    <file role="src" name="conf.c"/>
    <file role="src" name="conf.h"/>
    <file role="src" name="conf.stub.php"/>
@@ -136,6 +137,8 @@
      <file role="test" name="integration-tests-check.php"/>
      <file role="test" name="oauth-integration-tests-check.php"/>
     </dir>
+    <file role="test" name="kafka_consumer_close_in_callback.phpt"/>
+    <file role="test" name="kafka_consumer_close_in_rebalance_callback.phpt"/>
     <file role="test" name="kafka_consumer_get_rebalance_protocol.phpt"/>
     <file role="test" name="kafka_error_exception.phpt"/>
     <file role="test" name="message_headers.phpt"/>
