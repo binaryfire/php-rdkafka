@@ -46,6 +46,39 @@ static void kafka_conf_callback_dtor(kafka_conf_callback *cb) /* {{{ */
     }
 } /* }}} */
 
+static void kafka_conf_callback_get_gc(kafka_conf_callback *cb, zend_get_gc_buffer *gc_buffer) /* {{{ */
+{
+    if (cb) {
+        zend_get_gc_buffer_add_zval(gc_buffer, &cb->fci.function_name);
+    }
+} /* }}} */
+
+HashTable *kafka_conf_callbacks_get_gc(kafka_conf_callbacks *cbs, zend_object *object, zval **table, int *n) /* {{{ */
+{
+    zend_get_gc_buffer *gc_buffer = zend_get_gc_buffer_create();
+
+    kafka_conf_callback_get_gc(cbs->error, gc_buffer);
+    kafka_conf_callback_get_gc(cbs->rebalance, gc_buffer);
+    kafka_conf_callback_get_gc(cbs->dr_msg, gc_buffer);
+    kafka_conf_callback_get_gc(cbs->stats, gc_buffer);
+    kafka_conf_callback_get_gc(cbs->consume, gc_buffer);
+    kafka_conf_callback_get_gc(cbs->offset_commit, gc_buffer);
+    kafka_conf_callback_get_gc(cbs->log, gc_buffer);
+    kafka_conf_callback_get_gc(cbs->oauthbearer_token_refresh, gc_buffer);
+
+    zend_get_gc_buffer_use(gc_buffer, table, n);
+
+    if (*n == 0) {
+        return zend_std_get_gc(object, table, n);
+    }
+
+    if (object->properties == NULL && object->ce->default_properties_count == 0) {
+        return NULL;
+    }
+
+    return zend_std_get_properties(object);
+} /* }}} */
+
 void kafka_conf_callbacks_dtor(kafka_conf_callbacks *cbs) /* {{{ */
 {
     kafka_conf_callback_dtor(cbs->error);
@@ -106,6 +139,14 @@ static void kafka_conf_free(zend_object *object) /* {{{ */
     }
 
     zend_object_std_dtor(&intern->std);
+}
+/* }}} */
+
+static HashTable *kafka_conf_get_gc(zend_object *object, zval **table, int *n) /* {{{ */
+{
+    kafka_conf_object *intern = php_kafka_from_obj(kafka_conf_object, object);
+
+    return kafka_conf_callbacks_get_gc(&intern->cbs, object, table, n);
 }
 /* }}} */
 
@@ -912,6 +953,7 @@ void kafka_conf_minit(INIT_FUNC_ARGS)
 {
     handlers = kafka_default_object_handlers;
     handlers.free_obj = kafka_conf_free;
+    handlers.get_gc = kafka_conf_get_gc;
     handlers.offset = offsetof(kafka_conf_object, std);
 
     ce_kafka_conf = register_class_RdKafka_Conf();
