@@ -38,6 +38,7 @@
 typedef struct _object_intern {
     rd_kafka_t              *rk;
     kafka_conf_callbacks    cbs;
+    HashTable               topics;
     zend_object             std;
 } object_intern;
 
@@ -47,23 +48,33 @@ static zend_object_handlers handlers;
 static void kafka_consumer_free(zend_object *object) /* {{{ */
 {
     object_intern *intern = php_kafka_from_obj(object_intern, object);
+    rd_kafka_t *rk;
     rd_kafka_resp_err_t err;
+
     kafka_conf_callbacks_dtor(&intern->cbs);
 
     if (intern->rk) {
-        err = rd_kafka_consumer_close(intern->rk);
+        rk = intern->rk;
+        err = rd_kafka_consumer_close(rk);
 
         if (err) {
             php_error(E_WARNING, "rd_kafka_consumer_close failed: %s", rd_kafka_err2str(err));
         }
 
-        rd_kafka_destroy(intern->rk);
         intern->rk = NULL;
+        zend_hash_destroy(&intern->topics);
+        rd_kafka_destroy(rk);
     }
 
-    kafka_conf_callbacks_dtor(&intern->cbs);
-
     zend_object_std_dtor(&intern->std);
+}
+/* }}} */
+
+static HashTable *kafka_consumer_get_gc(zend_object *object, zval **table, int *n) /* {{{ */
+{
+    object_intern *intern = php_kafka_from_obj(object_intern, object);
+
+    return kafka_conf_callbacks_get_gc(&intern->cbs, object, table, n);
 }
 /* }}} */
 
@@ -164,6 +175,7 @@ PHP_METHOD(RdKafka_KafkaConsumer, __construct)
     }
 
     intern->rk = rk;
+    zend_hash_init(&intern->topics, 0, NULL, (dtor_func_t)kafka_topic_object_pre_free, 0);
 
     rd_kafka_poll_set_consumer(rk);
 
@@ -526,15 +538,18 @@ PHP_METHOD(RdKafka_KafkaConsumer, commitAsync)
 PHP_METHOD(RdKafka_KafkaConsumer, close)
 {
     object_intern *intern;
+    rd_kafka_t *rk;
 
     intern = get_object(getThis());
     if (!intern) {
         return;
     }
 
-    rd_kafka_consumer_close(intern->rk);
-    rd_kafka_destroy(intern->rk);
+    rk = intern->rk;
+    rd_kafka_consumer_close(rk);
     intern->rk = NULL;
+    zend_hash_destroy(&intern->topics);
+    rd_kafka_destroy(rk);
 }
 /* }}} */
 
@@ -642,6 +657,12 @@ PHP_METHOD(RdKafka_KafkaConsumer, newTopic)
     }
 
     topic_intern->rkt = rkt;
+    topic_intern->registry = &intern->topics;
+    topic_intern->zrk = *getThis();
+
+    Z_ADDREF_P(&topic_intern->zrk);
+
+    zend_hash_index_add_ptr(&intern->topics, (zend_ulong)topic_intern, topic_intern);
 }
 /* }}} */
 
@@ -995,5 +1016,6 @@ void kafka_kafka_consumer_minit(INIT_FUNC_ARGS) /* {{{ */
 
     handlers = kafka_default_object_handlers;
     handlers.free_obj = kafka_consumer_free;
+    handlers.get_gc = kafka_consumer_get_gc;
     handlers.offset = offsetof(object_intern, std);
 } /* }}} */
