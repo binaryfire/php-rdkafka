@@ -44,20 +44,52 @@ typedef struct _php_callback {
     zend_fcall_info_cache fcc;
 } php_callback;
 
+void kafka_topic_object_pre_free(kafka_topic_object **pp) /* {{{ */
+{
+    kafka_topic_object *intern = *pp;
+    zval zrk;
+
+    rd_kafka_topic_destroy(intern->rkt);
+    intern->rkt = NULL;
+    intern->registry = NULL;
+
+    ZVAL_COPY_VALUE(&zrk, &intern->zrk);
+    ZVAL_UNDEF(&intern->zrk);
+    zval_ptr_dtor(&zrk);
+}
+/* }}} */
+
 static void kafka_topic_free(zend_object *object) /* {{{ */
 {
     kafka_topic_object *intern = php_kafka_from_obj(kafka_topic_object, object);
 
-    if (Z_TYPE(intern->zrk) != IS_UNDEF && intern->rkt) {
-        kafka_object *kafka_intern = get_kafka_object(&intern->zrk);
-        if (kafka_intern) {
-            zend_hash_index_del(&kafka_intern->topics, (zend_ulong)intern);
-        }
+    if (intern->registry) {
+        zend_hash_index_del(intern->registry, (zend_ulong)intern);
     } else if (intern->rkt) {
         rd_kafka_topic_destroy(intern->rkt);
     }
 
     zend_object_std_dtor(&intern->std);
+}
+/* }}} */
+
+static HashTable *kafka_topic_get_gc(zend_object *object, zval **table, int *n) /* {{{ */
+{
+    kafka_topic_object *intern = php_kafka_from_obj(kafka_topic_object, object);
+    zend_get_gc_buffer *gc_buffer = zend_get_gc_buffer_create();
+
+    zend_get_gc_buffer_add_zval(gc_buffer, &intern->zrk);
+    zend_get_gc_buffer_use(gc_buffer, table, n);
+
+    if (*n == 0) {
+        return zend_std_get_gc(object, table, n);
+    }
+
+    if (object->properties == NULL && object->ce->default_properties_count == 0) {
+        return NULL;
+    }
+
+    return zend_std_get_properties(object);
 }
 /* }}} */
 
@@ -599,6 +631,7 @@ void kafka_topic_minit(INIT_FUNC_ARGS) { /* {{{ */
     memcpy(&object_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
     object_handlers.clone_obj = NULL;
     object_handlers.free_obj = kafka_topic_free;
+    object_handlers.get_gc = kafka_topic_get_gc;
     object_handlers.offset = offsetof(kafka_topic_object, std);
 
     ce_kafka_topic = register_class_RdKafka_Topic();

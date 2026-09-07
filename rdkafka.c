@@ -105,6 +105,14 @@ static void kafka_free(zend_object *object) /* {{{ */
 }
 /* }}} */
 
+static HashTable *kafka_get_gc(zend_object *object, zval **table, int *n) /* {{{ */
+{
+    kafka_object *intern = php_kafka_from_obj(kafka_object, object);
+
+    return kafka_conf_callbacks_get_gc(&intern->cbs, object, table, n);
+}
+/* }}} */
+
 static void toppar_pp_dtor(toppar ** tp) {
     efree(*tp);
 }
@@ -113,13 +121,6 @@ static void kafka_queue_object_pre_free(kafka_queue_object ** pp) {
     kafka_queue_object *intern = *pp;
     rd_kafka_queue_destroy(intern->rkqu);
     intern->rkqu = NULL;
-    zval_ptr_dtor(&intern->zrk);
-}
-
-static void kafka_topic_object_pre_free(kafka_topic_object ** pp) {
-    kafka_topic_object *intern = *pp;
-    rd_kafka_topic_destroy(intern->rkt);
-    intern->rkt = NULL;
     zval_ptr_dtor(&intern->zrk);
 }
 
@@ -546,6 +547,7 @@ PHP_METHOD(RdKafka, newTopic)
     }
 
     topic_intern->rkt = rkt;
+    topic_intern->registry = &intern->topics;
     topic_intern->zrk = *getThis();
 
     Z_ADDREF_P(&topic_intern->zrk);
@@ -1059,6 +1061,7 @@ PHP_MINIT_FUNCTION(rdkafka)
 
 	kafka_object_handlers = kafka_default_object_handlers;
     kafka_object_handlers.free_obj = kafka_free;
+    kafka_object_handlers.get_gc = kafka_get_gc;
     kafka_object_handlers.offset = offsetof(kafka_object, std);
 
     ce_kafka = register_class_RdKafka();
