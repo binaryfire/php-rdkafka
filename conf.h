@@ -65,6 +65,7 @@ void kafka_conf_minit(INIT_FUNC_ARGS);
 
 void kafka_conf_callbacks_dtor(kafka_conf_callbacks *cbs);
 void kafka_conf_callbacks_copy(kafka_conf_callbacks *to, kafka_conf_callbacks *from);
+HashTable *kafka_conf_callbacks_get_gc(kafka_conf_callbacks *cbs, zend_object *object, zval **table, int *n);
 
 void kafka_conf_dr_msg_cb(rd_kafka_t *rk, const rd_kafka_message_t *msg, void *opaque);
 
