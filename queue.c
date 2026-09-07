@@ -51,6 +51,26 @@ static void kafka_queue_free(zend_object *object) /* {{{ */
 }
 /* }}} */
 
+static HashTable *kafka_queue_get_gc(zend_object *object, zval **table, int *n) /* {{{ */
+{
+    kafka_queue_object *intern = php_kafka_from_obj(kafka_queue_object, object);
+    zend_get_gc_buffer *gc_buffer = zend_get_gc_buffer_create();
+
+    zend_get_gc_buffer_add_zval(gc_buffer, &intern->zrk);
+    zend_get_gc_buffer_use(gc_buffer, table, n);
+
+    if (*n == 0) {
+        return zend_std_get_gc(object, table, n);
+    }
+
+    if (object->properties == NULL && object->ce->default_properties_count == 0) {
+        return NULL;
+    }
+
+    return zend_std_get_properties(object);
+}
+/* }}} */
+
 static zend_object *kafka_queue_new(zend_class_entry *class_type) /* {{{ */
 {
     zend_object* retval;
@@ -118,6 +138,7 @@ void kafka_queue_minit(INIT_FUNC_ARGS) { /* {{{ */
 
     handlers = kafka_default_object_handlers;
     handlers.free_obj = kafka_queue_free;
+    handlers.get_gc = kafka_queue_get_gc;
     handlers.offset = offsetof(kafka_queue_object, std);
 
     ce_kafka_queue = register_class_RdKafka_Queue();
