@@ -10,6 +10,8 @@
 
 **Internal fixes.** A missing `zend_restore_error_handling()` call in the KafkaConsumer error path was corrected. Several internal type mismatches were fixed.
 
+**Callback and topic lifetimes corrected.** Callback zvals and the parent references held by topic and queue wrappers were invisible to PHP's cycle collector, so cycles through them kept clients alive until request shutdown. These cycles are now collected, which means an unreachable producer or consumer can be destroyed when cycle collection runs. `KafkaConsumerTopic` now keeps its `KafkaConsumer` alive and is invalidated when that consumer closes, preventing the native topic handle from outliving its client.
+
 **PHP 7 compatibility shims removed.** Internal compatibility code for PHP 7 has been cleaned up; this has no effect on behaviour for PHP 8 users.
 
 ---
