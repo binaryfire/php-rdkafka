@@ -39,6 +39,7 @@ typedef struct _kafka_conf_callback {
 
 typedef struct _kafka_conf_callbacks {
     zval zrk;
+    uint32_t callback_depth;
     kafka_conf_callback *error;
     kafka_conf_callback *rebalance;
     kafka_conf_callback *dr_msg;

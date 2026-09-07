@@ -87,6 +87,22 @@ void kafka_conf_callbacks_copy(kafka_conf_callbacks *to, kafka_conf_callbacks *f
     kafka_conf_callback_copy(&to->log, from->log);
 } /* }}} */
 
+static void kafka_conf_callback_call(kafka_conf_callbacks *cbs, kafka_conf_callback *cb, uint32_t param_count, zval params[]) /* {{{ */
+{
+    uint32_t i;
+
+    // Track callback nesting so KafkaConsumer::close() cannot destroy the
+    // client while librdkafka is still dispatching
+    cbs->callback_depth++;
+    rdkafka_call_function(&cb->fci, &cb->fcc, NULL, param_count, params);
+
+    for (i = 0; i < param_count; i++) {
+        zval_ptr_dtor(&params[i]);
+    }
+
+    cbs->callback_depth--;
+} /* }}} */
+
 static void kafka_conf_free(zend_object *object) /* {{{ */
 {
     kafka_conf_object *intern = php_kafka_from_obj(kafka_conf_object, object);
@@ -158,11 +174,7 @@ static void kafka_conf_error_cb(rd_kafka_t *rk, int err, const char *reason, voi
     ZVAL_LONG(&args[1], err);
     ZVAL_STRING(&args[2], reason);
 
-    rdkafka_call_function(&cbs->error->fci, &cbs->error->fcc, NULL, 3, args);
-
-    zval_ptr_dtor(&args[0]);
-    zval_ptr_dtor(&args[1]);
-    zval_ptr_dtor(&args[2]);
+    kafka_conf_callback_call(cbs, cbs->error, 3, args);
 }
 
 void kafka_conf_dr_msg_cb(rd_kafka_t *rk, const rd_kafka_message_t *msg, void *opaque)
@@ -178,10 +190,7 @@ void kafka_conf_dr_msg_cb(rd_kafka_t *rk, const rd_kafka_message_t *msg, void *o
         ZVAL_ZVAL(&args[0], &cbs->zrk, 1, 0);
         kafka_message_new(&args[1], msg, msg_opaque);
 
-        rdkafka_call_function(&cbs->dr_msg->fci, &cbs->dr_msg->fcc, NULL, 2, args);
-
-        zval_ptr_dtor(&args[0]);
-        zval_ptr_dtor(&args[1]);
+        kafka_conf_callback_call(cbs, cbs->dr_msg, 2, args);
     }
 
     if (msg_opaque != NULL) {
@@ -210,11 +219,7 @@ static int kafka_conf_stats_cb(rd_kafka_t *rk, char *json, size_t json_len, void
     ZVAL_STRING(&args[1], json);
     ZVAL_LONG(&args[2], json_len);
 
-    rdkafka_call_function(&cbs->stats->fci, &cbs->stats->fcc, NULL, 3, args);
-
-    zval_ptr_dtor(&args[0]);
-    zval_ptr_dtor(&args[1]);
-    zval_ptr_dtor(&args[2]);
+    kafka_conf_callback_call(cbs, cbs->stats, 3, args);
 
     return 0;
 }
@@ -247,11 +252,7 @@ static void kafka_conf_rebalance_cb(rd_kafka_t *rk, rd_kafka_resp_err_t err, rd_
     ZVAL_LONG(&args[1], err);
     kafka_topic_partition_list_to_array(&args[2], partitions);
 
-    rdkafka_call_function(&cbs->rebalance->fci, &cbs->rebalance->fcc, NULL, 3, args);
-
-    zval_ptr_dtor(&args[0]);
-    zval_ptr_dtor(&args[1]);
-    zval_ptr_dtor(&args[2]);
+    kafka_conf_callback_call(cbs, cbs->rebalance, 3, args);
 }
 
 static void kafka_conf_consume_cb(rd_kafka_message_t *msg, void *opaque)
@@ -273,11 +274,7 @@ static void kafka_conf_consume_cb(rd_kafka_message_t *msg, void *opaque)
     kafka_message_new(&args[0], msg, NULL);
     ZVAL_ZVAL(&args[1], &cbs->zrk, 1, 0);
 
-
-    rdkafka_call_function(&cbs->consume->fci, &cbs->consume->fcc, NULL, 2, args);
-
-    zval_ptr_dtor(&args[0]);
-    zval_ptr_dtor(&args[1]);
+    kafka_conf_callback_call(cbs, cbs->consume, 2, args);
 }
 
 static void kafka_conf_offset_commit_cb(rd_kafka_t *rk, rd_kafka_resp_err_t err, rd_kafka_topic_partition_list_t *partitions, void *opaque)
@@ -301,11 +298,7 @@ static void kafka_conf_offset_commit_cb(rd_kafka_t *rk, rd_kafka_resp_err_t err,
     ZVAL_LONG(&args[1], err);
     kafka_topic_partition_list_to_array(&args[2], partitions);
 
-    rdkafka_call_function(&cbs->offset_commit->fci, &cbs->offset_commit->fcc, NULL, 3, args);
-
-    zval_ptr_dtor(&args[0]);
-    zval_ptr_dtor(&args[1]);
-    zval_ptr_dtor(&args[2]);
+    kafka_conf_callback_call(cbs, cbs->offset_commit, 3, args);
 }
 
 static void kafka_conf_log_cb(const rd_kafka_t *rk, int level, const char *facility, const char *message)
@@ -328,12 +321,7 @@ static void kafka_conf_log_cb(const rd_kafka_t *rk, int level, const char *facil
     ZVAL_STRING(&args[2], facility);
     ZVAL_STRING(&args[3], message);
 
-    rdkafka_call_function(&cbs->log->fci, &cbs->log->fcc, NULL, 4, args);
-
-    zval_ptr_dtor(&args[0]);
-    zval_ptr_dtor(&args[1]);
-    zval_ptr_dtor(&args[2]);
-    zval_ptr_dtor(&args[3]);
+    kafka_conf_callback_call(cbs, cbs->log, 4, args);
 }
 
 /* 
@@ -365,10 +353,7 @@ static void kafka_conf_set_oauthbearer_token_refresh_cb(rd_kafka_t *rk, const ch
         ZVAL_STRING(&args[1], oauthbearer_config);
     }
 
-    rdkafka_call_function(&cbs->oauthbearer_token_refresh->fci, &cbs->oauthbearer_token_refresh->fcc, NULL, 2, args);
-
-    zval_ptr_dtor(&args[0]);
-    zval_ptr_dtor(&args[1]);
+    kafka_conf_callback_call(cbs, cbs->oauthbearer_token_refresh, 2, args);
 }
 
 /* {{{ proto RdKafka\Conf::__construct() */
