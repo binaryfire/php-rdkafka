@@ -532,6 +532,11 @@ PHP_METHOD(RdKafka_KafkaConsumer, close)
         return;
     }
 
+    if (intern->cbs.callback_depth > 0) {
+        zend_throw_exception(ce_kafka_exception, "RdKafka\\KafkaConsumer::close() cannot be called from a callback", RD_KAFKA_RESP_ERR__STATE);
+        return;
+    }
+
     rd_kafka_consumer_close(intern->rk);
     rd_kafka_destroy(intern->rk);
     intern->rk = NULL;
