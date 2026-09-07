@@ -8,6 +8,8 @@
 
 **New methods on `KafkaConsumer`.** The high-level consumer gained `poll()`, `oauthbearerSetToken()`, and `oauthbearerSetTokenFailure()`, and now supports SASL/SSL OAUTHBEARER authentication end-to-end.
 
+**Record conversion corrected.** `ProducerTopic::producev()` now sends integer header keys instead of ignoring them and later headers, and no longer modifies caller-owned header values.
+
 **Internal fixes.** A missing `zend_restore_error_handling()` call in the KafkaConsumer error path was corrected. Several internal type mismatches were fixed.
 
 **PHP 7 compatibility shims removed.** Internal compatibility code for PHP 7 has been cleaned up; this has no effect on behaviour for PHP 8 users.
@@ -37,6 +39,14 @@ if ($msg === null) {
 ```
 
 `RD_KAFKA_RESP_ERR__TIMED_OUT` on a returned `Message` now means an actual timeout error originating from librdkafka, not a poll window expiry.
+
+### Record conversion corrections
+
+`ProducerTopic::producev()` now sends integer header keys as their decimal names and continues processing later headers. Header values are converted without modifying the supplied array, and a conversion exception prevents the message from being enqueued. Existing scalar and null value coercion is unchanged.
+
+Header names with embedded null bytes are passed to librdkafka with their full length. The existing `Message::$headers` map may expose only the prefix because librdkafka's read API does not return the header name length.
+
+`Message::$timestamp` is now populated for successful messages with a null payload.
 
 ### Conf::dump() does not include topic-level properties
 
