@@ -56,8 +56,11 @@ void kafka_message_new(zval *return_value, const rd_kafka_message_t *message, ze
         zend_update_property_string(NULL, Z_OBJ_P(return_value), ZEND_STRL("topic_name"), rd_kafka_topic_name(message->rkt));
     }
     zend_update_property_long(NULL, Z_OBJ_P(return_value), ZEND_STRL("partition"), message->partition);
-    if (message->payload) {
+    /* Error messages without payloads have historically left timestamp null. */
+    if (message->err == RD_KAFKA_RESP_ERR_NO_ERROR || message->payload) {
         zend_update_property_long(NULL, Z_OBJ_P(return_value), ZEND_STRL("timestamp"), timestamp);
+    }
+    if (message->payload) {
         zend_update_property_stringl(NULL, Z_OBJ_P(return_value), ZEND_STRL("payload"), message->payload, message->len);
         zend_update_property_long(NULL, Z_OBJ_P(return_value), ZEND_STRL("len"), message->len);
     }
