@@ -12,6 +12,8 @@
 
 **Callback and topic lifetimes corrected.** Callback zvals and the parent references held by topic and queue wrappers were invisible to PHP's cycle collector, so cycles through them kept clients alive until request shutdown. These cycles are now collected, which means an unreachable producer or consumer can be destroyed when cycle collection runs. `KafkaConsumerTopic` now keeps its `KafkaConsumer` alive and is invalidated when that consumer closes, preventing the native topic handle from outliving its client.
 
+**`KafkaConsumer::close()` rejected inside callbacks.** The method now throws `RdKafka\Exception` when called from one of the consumer's callbacks. Close the consumer after the method that invoked the callback returns.
+
 **PHP 7 compatibility shims removed.** Internal compatibility code for PHP 7 has been cleaned up; this has no effect on behaviour for PHP 8 users.
 
 ---
@@ -39,6 +41,10 @@ if ($msg === null) {
 ```
 
 `RD_KAFKA_RESP_ERR__TIMED_OUT` on a returned `Message` now means an actual timeout error originating from librdkafka, not a poll window expiry.
+
+### `KafkaConsumer::close()` cannot be called from a callback
+
+Calling `KafkaConsumer::close()` from a consumer callback destroyed the native client while librdkafka was still using it. It now throws `RdKafka\Exception` with code `RD_KAFKA_RESP_ERR__STATE`. A callback can record that shutdown was requested, then the application can close the consumer after the method that invoked the callback returns.
 
 ### Conf::dump() does not include topic-level properties
 
