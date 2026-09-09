@@ -46,6 +46,7 @@
    <file role="doc" name="CREDITS"/>
    <file role="doc" name="LICENSE"/>
    <file role="doc" name="README.md"/>
+   <file role="doc" name="UPGRADE.md"/>
    <file role="src" name="conf.c"/>
    <file role="src" name="conf.h"/>
    <file role="src" name="conf.stub.php"/>
