@@ -21,13 +21,11 @@ class KafkaConsumer
     /** @tentative-return-type */
     public function assign(?array $topic_partitions = null): void {}
 
-#ifdef HAS_RD_KAFKA_INCREMENTAL_ASSIGN
     /** @tentative-return-type */
     public function incrementalAssign(array $topic_partitions): void {}
 
     /** @tentative-return-type */
     public function incrementalUnassign(array $topic_partitions): void {}
-#endif
 
     /** @tentative-return-type */
     public function getAssignment(): array {}
