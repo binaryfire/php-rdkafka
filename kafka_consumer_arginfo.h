@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: fb8f1a9814fd536f198b3c13a269b16c74ac45a8 */
+ * Stub hash: c0f3b9b8fa11e419d007cf10df7b62942eb2beb6 */
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_class_RdKafka_KafkaConsumer___construct, 0, 0, 1)
 	ZEND_ARG_OBJ_INFO(0, conf, RdKafka\\Conf, 0)
@@ -13,7 +13,6 @@ ZEND_BEGIN_ARG_INFO_EX(arginfo_class_RdKafka_KafkaConsumer_assign, 0, 0, 0)
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, topic_partitions, IS_ARRAY, 1, "null")
 ZEND_END_ARG_INFO()
 
-#if defined(HAS_RD_KAFKA_INCREMENTAL_ASSIGN)
 #if (PHP_VERSION_ID >= 80100)
 ZEND_BEGIN_ARG_WITH_TENTATIVE_RETURN_TYPE_INFO_EX(arginfo_class_RdKafka_KafkaConsumer_incrementalAssign, 0, 1, IS_VOID, 0)
 #else
@@ -23,7 +22,6 @@ ZEND_BEGIN_ARG_INFO_EX(arginfo_class_RdKafka_KafkaConsumer_incrementalAssign, 0,
 ZEND_END_ARG_INFO()
 
 #define arginfo_class_RdKafka_KafkaConsumer_incrementalUnassign arginfo_class_RdKafka_KafkaConsumer_incrementalAssign
-#endif
 
 #if (PHP_VERSION_ID >= 80100)
 ZEND_BEGIN_ARG_WITH_TENTATIVE_RETURN_TYPE_INFO_EX(arginfo_class_RdKafka_KafkaConsumer_getAssignment, 0, 0, IS_ARRAY, 0)
@@ -152,14 +150,12 @@ ZEND_BEGIN_ARG_INFO_EX(arginfo_class_RdKafka_KafkaConsumer_oauthbearerSetTokenFa
 	ZEND_ARG_TYPE_INFO(0, error, IS_STRING, 0)
 ZEND_END_ARG_INFO()
 
-#if defined(HAS_RD_KAFKA_REBALANCE_PROTOCOL)
 #if (PHP_VERSION_ID >= 80100)
 ZEND_BEGIN_ARG_WITH_TENTATIVE_RETURN_TYPE_INFO_EX(arginfo_class_RdKafka_KafkaConsumer_getRebalanceProtocol, 0, 0, IS_STRING, 0)
 #else
 ZEND_BEGIN_ARG_INFO_EX(arginfo_class_RdKafka_KafkaConsumer_getRebalanceProtocol, 0, 0, 0)
 #endif
 ZEND_END_ARG_INFO()
-#endif
 
 #if (PHP_VERSION_ID >= 80100)
 ZEND_BEGIN_ARG_WITH_TENTATIVE_RETURN_OBJ_INFO_EX(arginfo_class_RdKafka_KafkaConsumer_getConsumerGroupMetadata, 0, 0, RdKafka\\ConsumerGroupMetadata, 0)
@@ -170,10 +166,8 @@ ZEND_END_ARG_INFO()
 
 ZEND_METHOD(RdKafka_KafkaConsumer, __construct);
 ZEND_METHOD(RdKafka_KafkaConsumer, assign);
-#if defined(HAS_RD_KAFKA_INCREMENTAL_ASSIGN)
 ZEND_METHOD(RdKafka_KafkaConsumer, incrementalAssign);
 ZEND_METHOD(RdKafka_KafkaConsumer, incrementalUnassign);
-#endif
 ZEND_METHOD(RdKafka_KafkaConsumer, getAssignment);
 ZEND_METHOD(RdKafka_KafkaConsumer, commit);
 ZEND_METHOD(RdKafka_KafkaConsumer, close);
@@ -194,18 +188,14 @@ ZEND_METHOD(RdKafka_KafkaConsumer, resumePartitions);
 ZEND_METHOD(RdKafka_KafkaConsumer, poll);
 ZEND_METHOD(RdKafka_KafkaConsumer, oauthbearerSetToken);
 ZEND_METHOD(RdKafka_KafkaConsumer, oauthbearerSetTokenFailure);
-#if defined(HAS_RD_KAFKA_REBALANCE_PROTOCOL)
 ZEND_METHOD(RdKafka_KafkaConsumer, getRebalanceProtocol);
-#endif
 ZEND_METHOD(RdKafka_KafkaConsumer, getConsumerGroupMetadata);
 
 static const zend_function_entry class_RdKafka_KafkaConsumer_methods[] = {
 	ZEND_ME(RdKafka_KafkaConsumer, __construct, arginfo_class_RdKafka_KafkaConsumer___construct, ZEND_ACC_PUBLIC)
 	ZEND_ME(RdKafka_KafkaConsumer, assign, arginfo_class_RdKafka_KafkaConsumer_assign, ZEND_ACC_PUBLIC)
-#if defined(HAS_RD_KAFKA_INCREMENTAL_ASSIGN)
 	ZEND_ME(RdKafka_KafkaConsumer, incrementalAssign, arginfo_class_RdKafka_KafkaConsumer_incrementalAssign, ZEND_ACC_PUBLIC)
 	ZEND_ME(RdKafka_KafkaConsumer, incrementalUnassign, arginfo_class_RdKafka_KafkaConsumer_incrementalUnassign, ZEND_ACC_PUBLIC)
-#endif
 	ZEND_ME(RdKafka_KafkaConsumer, getAssignment, arginfo_class_RdKafka_KafkaConsumer_getAssignment, ZEND_ACC_PUBLIC)
 	ZEND_ME(RdKafka_KafkaConsumer, commit, arginfo_class_RdKafka_KafkaConsumer_commit, ZEND_ACC_PUBLIC)
 	ZEND_ME(RdKafka_KafkaConsumer, close, arginfo_class_RdKafka_KafkaConsumer_close, ZEND_ACC_PUBLIC)
@@ -226,9 +216,7 @@ static const zend_function_entry class_RdKafka_KafkaConsumer_methods[] = {
 	ZEND_ME(RdKafka_KafkaConsumer, poll, arginfo_class_RdKafka_KafkaConsumer_poll, ZEND_ACC_PUBLIC)
 	ZEND_ME(RdKafka_KafkaConsumer, oauthbearerSetToken, arginfo_class_RdKafka_KafkaConsumer_oauthbearerSetToken, ZEND_ACC_PUBLIC)
 	ZEND_ME(RdKafka_KafkaConsumer, oauthbearerSetTokenFailure, arginfo_class_RdKafka_KafkaConsumer_oauthbearerSetTokenFailure, ZEND_ACC_PUBLIC)
-#if defined(HAS_RD_KAFKA_REBALANCE_PROTOCOL)
 	ZEND_ME(RdKafka_KafkaConsumer, getRebalanceProtocol, arginfo_class_RdKafka_KafkaConsumer_getRebalanceProtocol, ZEND_ACC_PUBLIC)
-#endif
 	ZEND_ME(RdKafka_KafkaConsumer, getConsumerGroupMetadata, arginfo_class_RdKafka_KafkaConsumer_getConsumerGroupMetadata, ZEND_ACC_PUBLIC)
 	ZEND_FE_END
 };
