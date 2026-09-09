@@ -211,7 +211,6 @@ PHP_METHOD(RdKafka_KafkaConsumer, assign)
 }
 /* }}} */
 
-#ifdef HAS_RD_KAFKA_INCREMENTAL_ASSIGN
 static void consumer_incremental_op(int assign, INTERNAL_FUNCTION_PARAMETERS) /* {{{ */
 {
     HashTable *htopars = NULL;
@@ -262,7 +261,6 @@ PHP_METHOD(RdKafka_KafkaConsumer, incrementalUnassign)
     consumer_incremental_op(0, INTERNAL_FUNCTION_PARAM_PASSTHRU);
 }
 /* }}} */
-#endif // !HAS_RD_KAFKA_INCREMENTAL_ASSIGN
 
 /* {{{ proto array RdKafka\KafkaConsumer::getAssignment()
     Returns the current partition getAssignment */
@@ -944,7 +942,6 @@ PHP_METHOD(RdKafka_KafkaConsumer, oauthbearerSetTokenFailure)
 }
 /* }}} */
 
-#ifdef HAS_RD_KAFKA_REBALANCE_PROTOCOL
 /* {{{ proto string RdKafka\KafkaConsumer::getRebalanceProtocol()
    Returns the current consumer group rebalance protocol ("NONE", "EAGER", or "COOPERATIVE") */
 PHP_METHOD(RdKafka_KafkaConsumer, getRebalanceProtocol)
@@ -961,7 +958,6 @@ PHP_METHOD(RdKafka_KafkaConsumer, getRebalanceProtocol)
     RETURN_STRING(rd_kafka_rebalance_protocol(intern->rk));
 }
 /* }}} */
-#endif
 
 /* {{{ proto RdKafka\ConsumerGroupMetadata RdKafka\KafkaConsumer::getConsumerGroupMetadata() */
 PHP_METHOD(RdKafka_KafkaConsumer, getConsumerGroupMetadata)
