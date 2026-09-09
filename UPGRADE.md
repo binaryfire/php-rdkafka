@@ -2,11 +2,11 @@
 
 ## Summary of changes
 
-**Minimum requirements raised.** PHP 7.x is no longer supported; PHP 8.1 or later is required. librdkafka 1.5.3 or later is required (previously 1.0.0).
+**Minimum requirements raised.** PHP 7.x is no longer supported; PHP 8.1 or later is required. librdkafka 1.6.0 or later is required (previously 1.0.0).
 
-**Compile-time feature flags removed.** Several methods were previously compiled in only when the installed librdkafka was new enough to support them (guarded by `#ifdef HAS_RD_KAFKA_OAUTHBEARER`, `HAS_RD_KAFKA_TRANSACTIONS`, `HAS_RD_KAFKA_PURGE`, `HAS_RD_KAFKA_CONTROLLERID`, `HAVE_RD_KAFKA_MESSAGE_HEADERS`). Because the minimum librdkafka is now 1.5.3, which provides all of these features, the guards have been removed and the methods are always available.
+**Compile-time feature flags removed.** Several methods were previously compiled in only when the installed librdkafka was new enough to support them (guarded by `#ifdef HAS_RD_KAFKA_OAUTHBEARER`, `HAS_RD_KAFKA_TRANSACTIONS`, `HAS_RD_KAFKA_PURGE`, `HAS_RD_KAFKA_CONTROLLERID`, `HAVE_RD_KAFKA_MESSAGE_HEADERS`, `HAS_RD_KAFKA_INCREMENTAL_ASSIGN`). Because the minimum librdkafka is now 1.6.0, which provides all of these features, the guards have been removed and the methods are always available.
 
-**New methods on `KafkaConsumer`.** The high-level consumer gained `poll()`, `oauthbearerSetToken()`, and `oauthbearerSetTokenFailure()`, and now supports SASL/SSL OAUTHBEARER authentication end-to-end.
+**New methods on `KafkaConsumer`.** The high-level consumer gained `poll()`, `oauthbearerSetToken()`, `oauthbearerSetTokenFailure()`, `getRebalanceProtocol()`, and `getConsumerGroupMetadata()`, and now supports SASL/SSL OAUTHBEARER authentication end-to-end.
 
 **Internal fixes.** A missing `zend_restore_error_handling()` call in the KafkaConsumer error path was corrected. Several internal type mismatches were fixed.
 
@@ -85,13 +85,13 @@ Refer to librdkafka CONFIGURATION.md (https://github.com/confluentinc/librdkafka
 
 php-rdkafka 7.x requires PHP 8.1 or later. PHP 7.x is no longer supported.
 
-### librdkafka 1.5.3 now required
+### librdkafka 1.6.0 now required
 
-librdkafka 1.5.3 is the new minimum. Versions older than 1.5.3 are not supported.
+librdkafka 1.6.0 is the new minimum. Versions older than 1.6.0 are not supported.
 
 ### Previously conditional methods are now always available
 
-The following methods were only compiled in when the build-time librdkafka was sufficiently new. They are now unconditionally available (librdkafka 1.5.3 supports all of them):
+The following methods were only compiled in when the build-time librdkafka was sufficiently new. They are now unconditionally available (librdkafka 1.6.0 supports all of them):
 
 | Class | Method |
 |-------|--------|
@@ -101,21 +101,28 @@ The following methods were only compiled in when the build-time librdkafka was s
 | `RdKafka\Producer` | `oauthbearerSetToken()`, `oauthbearerSetTokenFailure()` |
 | `RdKafka\Producer` | `getControllerId()` |
 | `RdKafka\KafkaConsumer` | `getControllerId()` |
+| `RdKafka\KafkaConsumer` | `incrementalAssign()`, `incrementalUnassign()` |
 | `RdKafka\ProducerTopic` | `producev()` |
 
 If your code checked `method_exists()` before calling any of these, those guards can be removed.
 
 ### New methods on `KafkaConsumer`
 
-`RdKafka\KafkaConsumer` gained three new methods:
+`RdKafka\KafkaConsumer` gained five new methods:
 
 ```php
 KafkaConsumer::poll(int $timeout_ms): int
 KafkaConsumer::oauthbearerSetToken(string $token_value, int $lifetime_ms, string $principal_name, array $extensions = []): void
 KafkaConsumer::oauthbearerSetTokenFailure(string $error): void
+KafkaConsumer::getRebalanceProtocol(): string
+KafkaConsumer::getConsumerGroupMetadata(): ConsumerGroupMetadata
 ```
 
 `poll()` allows the high-level consumer to service callbacks (including the OAUTHBEARER token refresh callback) without consuming a message. This is the same method that exists on the low-level `RdKafka\Consumer`.
+
+### New `ConsumerGroupMetadata` API
+
+`RdKafka\ConsumerGroupMetadata` can be constructed with full group metadata on every supported librdkafka version. Its getter methods require librdkafka 2.8.0 and throw `RdKafka\Exception` on older versions.
 
 ### `RdKafka::setLogger()` and `rd_kafka_errno2err()` are deprecated
 
