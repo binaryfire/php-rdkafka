@@ -59,6 +59,12 @@ if test "$PHP_RDKAFKA" != "no"; then
     AC_MSG_ERROR([librdkafka version 1.6.0 or greater required.])
   ])
 
+  AC_CHECK_LIB($LIBNAME,[rd_kafka_consumer_close_queue],[
+    AC_DEFINE(HAS_RD_KAFKA_CONSUMER_CLOSE_QUEUE,1,[ ])
+  ],[
+    AC_MSG_WARN([no rd_kafka_consumer_close_queue, KafkaConsumer::closeAsync() and isClosed() not available (requires librdkafka >= 1.9.0)])
+  ])
+
   AC_CHECK_LIB($LIBNAME,[rd_kafka_consumer_group_metadata_group_id],[
     AC_DEFINE(HAS_RD_KAFKA_CONSUMER_GROUP_METADATA_GETTERS,1,[ ])
   ],[

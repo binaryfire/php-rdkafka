@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: c0f3b9b8fa11e419d007cf10df7b62942eb2beb6 */
+ * Stub hash: c2269c2c1cfb3d55801060b2fdb76b6ddb911aae */
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_class_RdKafka_KafkaConsumer___construct, 0, 0, 1)
 	ZEND_ARG_OBJ_INFO(0, conf, RdKafka\\Conf, 0)
@@ -45,6 +45,22 @@ ZEND_BEGIN_ARG_INFO_EX(arginfo_class_RdKafka_KafkaConsumer_close, 0, 0, 0)
 #endif
 ZEND_END_ARG_INFO()
 
+#if defined(HAS_RD_KAFKA_CONSUMER_CLOSE_QUEUE)
+#if (PHP_VERSION_ID >= 80100)
+ZEND_BEGIN_ARG_WITH_TENTATIVE_RETURN_TYPE_INFO_EX(arginfo_class_RdKafka_KafkaConsumer_closeAsync, 0, 0, IS_VOID, 0)
+#else
+ZEND_BEGIN_ARG_INFO_EX(arginfo_class_RdKafka_KafkaConsumer_closeAsync, 0, 0, 0)
+#endif
+ZEND_END_ARG_INFO()
+
+#if (PHP_VERSION_ID >= 80100)
+ZEND_BEGIN_ARG_WITH_TENTATIVE_RETURN_TYPE_INFO_EX(arginfo_class_RdKafka_KafkaConsumer_isClosed, 0, 0, _IS_BOOL, 0)
+#else
+ZEND_BEGIN_ARG_INFO_EX(arginfo_class_RdKafka_KafkaConsumer_isClosed, 0, 0, 0)
+#endif
+ZEND_END_ARG_INFO()
+#endif
+
 #define arginfo_class_RdKafka_KafkaConsumer_commitAsync arginfo_class_RdKafka_KafkaConsumer_commit
 
 #if (PHP_VERSION_ID >= 80100)
@@ -53,6 +69,22 @@ ZEND_BEGIN_ARG_WITH_TENTATIVE_RETURN_OBJ_INFO_EX(arginfo_class_RdKafka_KafkaCons
 ZEND_BEGIN_ARG_INFO_EX(arginfo_class_RdKafka_KafkaConsumer_consume, 0, 0, 1)
 #endif
 	ZEND_ARG_TYPE_INFO(0, timeout_ms, IS_LONG, 0)
+ZEND_END_ARG_INFO()
+
+#if (PHP_VERSION_ID >= 80100)
+ZEND_BEGIN_ARG_WITH_TENTATIVE_RETURN_OBJ_INFO_EX(arginfo_class_RdKafka_KafkaConsumer_getConsumerQueue, 0, 0, RdKafka\\Queue, 0)
+#else
+ZEND_BEGIN_ARG_INFO_EX(arginfo_class_RdKafka_KafkaConsumer_getConsumerQueue, 0, 0, 0)
+#endif
+ZEND_END_ARG_INFO()
+
+#if (PHP_VERSION_ID >= 80100)
+ZEND_BEGIN_ARG_WITH_TENTATIVE_RETURN_OBJ_INFO_EX(arginfo_class_RdKafka_KafkaConsumer_splitPartitionQueue, 0, 2, RdKafka\\Queue, 0)
+#else
+ZEND_BEGIN_ARG_INFO_EX(arginfo_class_RdKafka_KafkaConsumer_splitPartitionQueue, 0, 0, 2)
+#endif
+	ZEND_ARG_TYPE_INFO(0, topic, IS_STRING, 0)
+	ZEND_ARG_TYPE_INFO(0, partition, IS_LONG, 0)
 ZEND_END_ARG_INFO()
 
 #if (PHP_VERSION_ID >= 80100)
@@ -171,8 +203,14 @@ ZEND_METHOD(RdKafka_KafkaConsumer, incrementalUnassign);
 ZEND_METHOD(RdKafka_KafkaConsumer, getAssignment);
 ZEND_METHOD(RdKafka_KafkaConsumer, commit);
 ZEND_METHOD(RdKafka_KafkaConsumer, close);
+#if defined(HAS_RD_KAFKA_CONSUMER_CLOSE_QUEUE)
+ZEND_METHOD(RdKafka_KafkaConsumer, closeAsync);
+ZEND_METHOD(RdKafka_KafkaConsumer, isClosed);
+#endif
 ZEND_METHOD(RdKafka_KafkaConsumer, commitAsync);
 ZEND_METHOD(RdKafka_KafkaConsumer, consume);
+ZEND_METHOD(RdKafka_KafkaConsumer, getConsumerQueue);
+ZEND_METHOD(RdKafka_KafkaConsumer, splitPartitionQueue);
 ZEND_METHOD(RdKafka_KafkaConsumer, subscribe);
 ZEND_METHOD(RdKafka_KafkaConsumer, getSubscription);
 ZEND_METHOD(RdKafka_KafkaConsumer, unsubscribe);
@@ -199,8 +237,14 @@ static const zend_function_entry class_RdKafka_KafkaConsumer_methods[] = {
 	ZEND_ME(RdKafka_KafkaConsumer, getAssignment, arginfo_class_RdKafka_KafkaConsumer_getAssignment, ZEND_ACC_PUBLIC)
 	ZEND_ME(RdKafka_KafkaConsumer, commit, arginfo_class_RdKafka_KafkaConsumer_commit, ZEND_ACC_PUBLIC)
 	ZEND_ME(RdKafka_KafkaConsumer, close, arginfo_class_RdKafka_KafkaConsumer_close, ZEND_ACC_PUBLIC)
+#if defined(HAS_RD_KAFKA_CONSUMER_CLOSE_QUEUE)
+	ZEND_ME(RdKafka_KafkaConsumer, closeAsync, arginfo_class_RdKafka_KafkaConsumer_closeAsync, ZEND_ACC_PUBLIC)
+	ZEND_ME(RdKafka_KafkaConsumer, isClosed, arginfo_class_RdKafka_KafkaConsumer_isClosed, ZEND_ACC_PUBLIC)
+#endif
 	ZEND_ME(RdKafka_KafkaConsumer, commitAsync, arginfo_class_RdKafka_KafkaConsumer_commitAsync, ZEND_ACC_PUBLIC)
 	ZEND_ME(RdKafka_KafkaConsumer, consume, arginfo_class_RdKafka_KafkaConsumer_consume, ZEND_ACC_PUBLIC)
+	ZEND_ME(RdKafka_KafkaConsumer, getConsumerQueue, arginfo_class_RdKafka_KafkaConsumer_getConsumerQueue, ZEND_ACC_PUBLIC)
+	ZEND_ME(RdKafka_KafkaConsumer, splitPartitionQueue, arginfo_class_RdKafka_KafkaConsumer_splitPartitionQueue, ZEND_ACC_PUBLIC)
 	ZEND_ME(RdKafka_KafkaConsumer, subscribe, arginfo_class_RdKafka_KafkaConsumer_subscribe, ZEND_ACC_PUBLIC)
 	ZEND_ME(RdKafka_KafkaConsumer, getSubscription, arginfo_class_RdKafka_KafkaConsumer_getSubscription, ZEND_ACC_PUBLIC)
 	ZEND_ME(RdKafka_KafkaConsumer, unsubscribe, arginfo_class_RdKafka_KafkaConsumer_unsubscribe, ZEND_ACC_PUBLIC)

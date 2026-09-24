@@ -36,11 +36,25 @@ class KafkaConsumer
     /** @tentative-return-type */
     public function close(): void {}
 
+#ifdef HAS_RD_KAFKA_CONSUMER_CLOSE_QUEUE
+    /** @tentative-return-type */
+    public function closeAsync(): void {}
+
+    /** @tentative-return-type */
+    public function isClosed(): bool {}
+#endif
+
     /** @tentative-return-type */
     public function commitAsync(Message|array|null $message_or_offsets = null): void {}
 
     /** @tentative-return-type */
     public function consume(int $timeout_ms): ?Message {}
+
+    /** @tentative-return-type */
+    public function getConsumerQueue(): Queue {}
+
+    /** @tentative-return-type */
+    public function splitPartitionQueue(string $topic, int $partition): Queue {}
 
     /** @tentative-return-type */
     public function subscribe(array $topics): void {}

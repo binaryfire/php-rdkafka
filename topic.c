@@ -42,6 +42,7 @@ zend_class_entry * ce_kafka_topic;
 typedef struct _php_callback {
     zend_fcall_info fci;
     zend_fcall_info_cache fcc;
+    kafka_object *kafka_intern;
 } php_callback;
 
 void kafka_topic_object_pre_free(kafka_topic_object **pp) /* {{{ */
@@ -127,9 +128,7 @@ static void consume_callback(rd_kafka_message_t *msg, void *opaque)
 
     kafka_message_new(&args[0], msg, NULL);
 
-    rdkafka_call_function(&cb->fci, &cb->fcc, NULL, 1, args);
-
-    zval_ptr_dtor(&args[0]);
+    kafka_conf_call_function(&cb->kafka_intern->cbs, cb->kafka_intern->rk, &cb->fci, &cb->fcc, 1, args, 1);
 }
 
 kafka_topic_object * get_kafka_topic_object(zval *zrkt)
@@ -137,7 +136,7 @@ kafka_topic_object * get_kafka_topic_object(zval *zrkt)
     kafka_topic_object *orkt = Z_RDKAFKA_P(kafka_topic_object, zrkt);
 
     if (!orkt->rkt) {
-        zend_throw_exception_ex(NULL, 0, "RdKafka\\Topic::__construct() has not been called");
+        zend_throw_exception_ex(NULL, 0, "RdKafka\\Topic is not initialized or its client has been closed");
         return NULL;
     }
 
@@ -164,6 +163,11 @@ PHP_METHOD(RdKafka_ConsumerTopic, consumeCallback)
 
     intern = get_kafka_topic_object(getThis());
     if (!intern) {
+        return;
+    }
+
+    cb.kafka_intern = get_kafka_object(&intern->zrk);
+    if (!cb.kafka_intern) {
         return;
     }
 
@@ -206,6 +210,13 @@ PHP_METHOD(RdKafka_ConsumerTopic, consumeQueueStart)
 
     queue_intern = get_kafka_queue_object(zrkqu);
     if (!queue_intern) {
+        return;
+    }
+
+    // librdkafka requires a queue created by rd_kafka_queue_new(). Messages
+    // fetched into a client's main queue would abort that client's poll().
+    if (queue_intern->registry_key) {
+        zend_throw_exception(spl_ce_InvalidArgumentException, "RdKafka\\ConsumerTopic::consumeQueueStart() requires a queue created by RdKafka\\Consumer::newQueue()", 0);
         return;
     }
 
@@ -359,7 +370,9 @@ PHP_METHOD(RdKafka_ConsumerTopic, consume)
 
     if (!message) {
         err = rd_kafka_last_error();
-        if (err == RD_KAFKA_RESP_ERR__TIMED_OUT) {
+        // A callback exception interrupts consumption; let it propagate
+        // instead of the interruption error
+        if (err == RD_KAFKA_RESP_ERR__TIMED_OUT || EG(exception)) {
             return;
         }
         zend_throw_exception(ce_kafka_exception, rd_kafka_err2str(err), err);
@@ -407,6 +420,9 @@ PHP_METHOD(RdKafka_ConsumerTopic, consumeBatch)
 
     if (result == -1) {
         efree(rkmessages);
+        if (EG(exception)) {
+            return;
+        }
         err = rd_kafka_last_error();
         zend_throw_exception(ce_kafka_exception, rd_kafka_err2str(err), err);
         return;

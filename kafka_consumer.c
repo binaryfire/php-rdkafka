@@ -29,41 +29,79 @@
 #include "conf.h"
 #include "topic_partition.h"
 #include "topic.h"
+#include "queue.h"
 #include "message.h"
 #include "metadata.h"
 #include "oauthbearer.h"
 #include "consumer_group_metadata.h"
+#include "kafka_error_exception.h"
 #include "kafka_consumer_arginfo.h"
 
 typedef struct _object_intern {
     rd_kafka_t              *rk;
     kafka_conf_callbacks    cbs;
     HashTable               topics;
+    HashTable               queues;
     zend_object             std;
 } object_intern;
 
 static zend_class_entry * ce;
 static zend_object_handlers handlers;
 
+static rd_kafka_resp_err_t kafka_consumer_close_and_destroy(object_intern *intern) /* {{{ */
+{
+    rd_kafka_t *rk = intern->rk;
+    rd_kafka_resp_err_t err = RD_KAFKA_RESP_ERR_NO_ERROR;
+#ifdef HAS_RD_KAFKA_CONSUMER_CLOSE_QUEUE
+    zend_bool closing_async = intern->cbs.consumer_close_state == KAFKA_CONSUMER_CLOSING_ASYNC;
+#endif
+
+    intern->cbs.consumer_close_state = KAFKA_CONSUMER_FINALIZING;
+
+    // librdkafka requires topic and queue handles to be released before
+    // closing, including the consumer queue
+    zend_hash_destroy(&intern->topics);
+    zend_hash_destroy(&intern->queues);
+
+#ifdef HAS_RD_KAFKA_CONSUMER_CLOSE_QUEUE
+    if (closing_async) {
+        // Closing again would not wait for the close in progress, so serve
+        // the consumer queue until it completes
+        while (!rd_kafka_consumer_closed(rk)) {
+            rd_kafka_message_t *message = rd_kafka_consumer_poll(rk, 100);
+
+            if (message) {
+                rd_kafka_message_destroy(message);
+            }
+        }
+    } else if (!rd_kafka_consumer_closed(rk)) {
+        err = rd_kafka_consumer_close(rk);
+    }
+#else
+    err = rd_kafka_consumer_close(rk);
+#endif
+
+    intern->cbs.rk = NULL;
+    intern->rk = NULL;
+    rd_kafka_destroy(rk);
+
+    return err;
+}
+/* }}} */
+
 static void kafka_consumer_free(zend_object *object) /* {{{ */
 {
     object_intern *intern = php_kafka_from_obj(object_intern, object);
-    rd_kafka_t *rk;
     rd_kafka_resp_err_t err;
 
     kafka_conf_callbacks_dtor(&intern->cbs);
 
     if (intern->rk) {
-        rk = intern->rk;
-        err = rd_kafka_consumer_close(rk);
+        err = kafka_consumer_close_and_destroy(intern);
 
         if (err) {
             php_error(E_WARNING, "rd_kafka_consumer_close failed: %s", rd_kafka_err2str(err));
         }
-
-        intern->rk = NULL;
-        zend_hash_destroy(&intern->topics);
-        rd_kafka_destroy(rk);
     }
 
     zend_object_std_dtor(&intern->std);
@@ -145,6 +183,14 @@ PHP_METHOD(RdKafka_KafkaConsumer, __construct)
 
     intern = Z_RDKAFKA_P(object_intern, getThis());
 
+    // Constructing again would replace the client or, after close(), its
+    // callbacks and closed state
+    if (Z_TYPE(intern->cbs.zrk) != IS_UNDEF) {
+        zend_restore_error_handling(&error_handling);
+        zend_throw_exception(ce_kafka_exception, "RdKafka\\KafkaConsumer::__construct() has already been called", RD_KAFKA_RESP_ERR__STATE);
+        return;
+    }
+
     conf_intern = get_kafka_conf_object(zconf);
     if (conf_intern) {
         conf = rd_kafka_conf_dup(conf_intern->u.conf);
@@ -158,6 +204,11 @@ PHP_METHOD(RdKafka_KafkaConsumer, __construct)
         if (conf) {
             rd_kafka_conf_destroy(conf);
         }
+        // Allow a retry with a corrected configuration. The callbacks are
+        // released first, so construction started by their destructors
+        // is still rejected.
+        kafka_conf_callbacks_dtor(&intern->cbs);
+        ZVAL_UNDEF(&intern->cbs.zrk);
         zend_throw_exception(ce_kafka_exception, "\"group.id\" must be configured", 0);
         return;
     }
@@ -165,7 +216,11 @@ PHP_METHOD(RdKafka_KafkaConsumer, __construct)
     rk = rd_kafka_new(RD_KAFKA_CONSUMER, conf, errstr, sizeof(errstr));
 
     if (rk == NULL) {
+        // rd_kafka_new() only takes ownership of the configuration on success
+        rd_kafka_conf_destroy(conf);
         zend_restore_error_handling(&error_handling);
+        kafka_conf_callbacks_dtor(&intern->cbs);
+        ZVAL_UNDEF(&intern->cbs.zrk);
         zend_throw_exception(ce_kafka_exception, errstr, 0);
         return;
     }
@@ -175,7 +230,9 @@ PHP_METHOD(RdKafka_KafkaConsumer, __construct)
     }
 
     intern->rk = rk;
+    intern->cbs.rk = rk;
     zend_hash_init(&intern->topics, 0, NULL, (dtor_func_t)kafka_topic_object_pre_free, 0);
+    zend_hash_init(&intern->queues, 0, NULL, (dtor_func_t)kafka_queue_object_pre_free, 0);
 
     rd_kafka_poll_set_consumer(rk);
 
@@ -220,6 +277,8 @@ PHP_METHOD(RdKafka_KafkaConsumer, assign)
         zend_throw_exception(ce_kafka_exception, rd_kafka_err2str(err), err);
         return;
     }
+
+    intern->cbs.rebalance_acknowledged = 1;
 }
 /* }}} */
 
@@ -254,7 +313,10 @@ static void consumer_incremental_op(int assign, INTERNAL_FUNCTION_PARAMETERS) /*
     if (err) {
         zend_throw_exception(ce_kafka_exception, rd_kafka_error_string(err), 0);
         rd_kafka_error_destroy(err);
+        return;
     }
+
+    intern->cbs.rebalance_acknowledged = 1;
 }
 /* }}} */
 
@@ -431,6 +493,97 @@ PHP_METHOD(RdKafka_KafkaConsumer, consume)
 }
 /* }}} */
 
+/* {{{ proto RdKafka\Queue RdKafka\KafkaConsumer::getConsumerQueue()
+   Returns the queue that consume() serves */
+PHP_METHOD(RdKafka_KafkaConsumer, getConsumerQueue)
+{
+    object_intern *intern;
+    kafka_queue_object *queue_intern;
+
+    if (zend_parse_parameters_none() == FAILURE) {
+        return;
+    }
+
+    intern = get_object(getThis());
+    if (!intern) {
+        return;
+    }
+
+    // Queues were already released for the close in progress
+    if (intern->cbs.consumer_close_state == KAFKA_CONSUMER_FINALIZING) {
+        zend_throw_exception(ce_kafka_exception, "RdKafka\\KafkaConsumer is being closed", RD_KAFKA_RESP_ERR__STATE);
+        return;
+    }
+
+    queue_intern = zend_hash_str_find_ptr(&intern->queues, ZEND_STRL("consumer"));
+    if (queue_intern) {
+        RETURN_OBJ_COPY(&queue_intern->std);
+    }
+
+    kafka_queue_object_init(return_value, getThis(), &intern->queues, rd_kafka_queue_get_consumer(intern->rk), zend_string_init(ZEND_STRL("consumer"), 0));
+}
+/* }}} */
+
+/* {{{ proto RdKafka\Queue RdKafka\KafkaConsumer::splitPartitionQueue(string $topic, int $partition)
+   Stops forwarding the partition's messages to the consumer queue and returns
+   the partition's own queue */
+PHP_METHOD(RdKafka_KafkaConsumer, splitPartitionQueue)
+{
+    object_intern *intern;
+    kafka_queue_object *queue_intern;
+    char *topic;
+    size_t topic_len;
+    zend_long partition;
+    zend_string *registry_key;
+    rd_kafka_queue_t *rkqu;
+    rd_kafka_resp_err_t err;
+
+    // Rejects embedded NUL bytes, which would give one partition queue
+    // several names
+    if (zend_parse_parameters(ZEND_NUM_ARGS(), "pl", &topic, &topic_len, &partition) == FAILURE) {
+        return;
+    }
+
+    if (partition < 0 || partition > 0x7FFFFFFF) {
+        zend_throw_exception_ex(spl_ce_InvalidArgumentException, 0, "Out of range value '" ZEND_LONG_FMT "' for $partition", partition);
+        return;
+    }
+
+    intern = get_object(getThis());
+    if (!intern) {
+        return;
+    }
+
+    // Queues were already released for the close in progress
+    if (intern->cbs.consumer_close_state == KAFKA_CONSUMER_FINALIZING) {
+        zend_throw_exception(ce_kafka_exception, "RdKafka\\KafkaConsumer is being closed", RD_KAFKA_RESP_ERR__STATE);
+        return;
+    }
+
+    registry_key = zend_strpprintf(0, ZEND_LONG_FMT ":%s", partition, topic);
+
+    queue_intern = zend_hash_find_ptr(&intern->queues, registry_key);
+    if (queue_intern) {
+        zend_string_release(registry_key);
+        RETURN_OBJ_COPY(&queue_intern->std);
+    }
+
+    rkqu = rd_kafka_queue_get_partition(intern->rk, topic, (int32_t) partition);
+    if (!rkqu) {
+        zend_string_release(registry_key);
+        err = rd_kafka_last_error();
+        zend_throw_exception(ce_kafka_exception, rd_kafka_err2str(err), err);
+        return;
+    }
+
+    if (!kafka_queue_object_init(return_value, getThis(), &intern->queues, rkqu, registry_key)) {
+        return;
+    }
+
+    rd_kafka_queue_forward(rkqu, NULL);
+}
+/* }}} */
+
 static void consumer_commit(int async, INTERNAL_FUNCTION_PARAMETERS) /* {{{ */
 {
     zval *zarg = NULL;
@@ -536,7 +689,7 @@ PHP_METHOD(RdKafka_KafkaConsumer, commitAsync)
 PHP_METHOD(RdKafka_KafkaConsumer, close)
 {
     object_intern *intern;
-    rd_kafka_t *rk;
+    rd_kafka_resp_err_t err;
 
     intern = get_object(getThis());
     if (!intern) {
@@ -548,13 +701,85 @@ PHP_METHOD(RdKafka_KafkaConsumer, close)
         return;
     }
 
-    rk = intern->rk;
-    rd_kafka_consumer_close(rk);
-    intern->rk = NULL;
-    zend_hash_destroy(&intern->topics);
-    rd_kafka_destroy(rk);
+    // Error handlers and destructors can also run PHP code while the
+    // consumer is being closed
+    if (intern->cbs.consumer_close_state == KAFKA_CONSUMER_FINALIZING) {
+        zend_throw_exception(ce_kafka_exception, "RdKafka\\KafkaConsumer is being closed", RD_KAFKA_RESP_ERR__STATE);
+        return;
+    }
+
+    err = kafka_consumer_close_and_destroy(intern);
+
+    if (err != RD_KAFKA_RESP_ERR_NO_ERROR) {
+        zend_throw_exception(ce_kafka_exception, rd_kafka_err2str(err), err);
+        return;
+    }
 }
 /* }}} */
+
+#ifdef HAS_RD_KAFKA_CONSUMER_CLOSE_QUEUE
+/* {{{ proto void RdKafka\KafkaConsumer::closeAsync()
+   Start closing the consumer. Keep calling consume() until isClosed() returns
+   true, then call close() */
+PHP_METHOD(RdKafka_KafkaConsumer, closeAsync)
+{
+    object_intern *intern;
+    rd_kafka_queue_t *queue;
+    rd_kafka_error_t *error;
+
+    if (zend_parse_parameters_none() == FAILURE) {
+        return;
+    }
+
+    intern = get_object(getThis());
+    if (!intern) {
+        return;
+    }
+
+    if (intern->cbs.consumer_close_state == KAFKA_CONSUMER_FINALIZING) {
+        zend_throw_exception(ce_kafka_exception, "RdKafka\\KafkaConsumer is being closed", RD_KAFKA_RESP_ERR__STATE);
+        return;
+    }
+
+    if (intern->cbs.consumer_close_state == KAFKA_CONSUMER_CLOSING_ASYNC) {
+        return;
+    }
+
+    // Close events are served by consume(), which polls the consumer queue
+    queue = rd_kafka_queue_get_consumer(intern->rk);
+    error = rd_kafka_consumer_close_queue(intern->rk, queue);
+    rd_kafka_queue_destroy(queue);
+
+    if (error != NULL) {
+        create_kafka_error(return_value, error);
+        rd_kafka_error_destroy(error);
+        zend_throw_exception_object(return_value);
+        return;
+    }
+
+    intern->cbs.consumer_close_state = KAFKA_CONSUMER_CLOSING_ASYNC;
+}
+/* }}} */
+
+/* {{{ proto bool RdKafka\KafkaConsumer::isClosed()
+   Returns whether the consumer has finished closing */
+PHP_METHOD(RdKafka_KafkaConsumer, isClosed)
+{
+    object_intern *intern;
+
+    if (zend_parse_parameters_none() == FAILURE) {
+        return;
+    }
+
+    intern = get_object(getThis());
+    if (!intern) {
+        return;
+    }
+
+    RETURN_BOOL(rd_kafka_consumer_closed(intern->rk));
+}
+/* }}} */
+#endif
 
 /* {{{ proto RdKafka\Metadata RdKafka\KafkaConsumer::getMetadata(bool $all_topics, RdKafka\Topic $only_topic, int $timeout_ms)
    Request Metadata from broker */
@@ -634,6 +859,12 @@ PHP_METHOD(RdKafka_KafkaConsumer, newTopic)
 
     intern = get_object(getThis());
     if (!intern) {
+        return;
+    }
+
+    // Topics were already released for the close in progress
+    if (intern->cbs.consumer_close_state == KAFKA_CONSUMER_FINALIZING) {
+        zend_throw_exception(ce_kafka_exception, "RdKafka\\KafkaConsumer is being closed", RD_KAFKA_RESP_ERR__STATE);
         return;
     }
 
@@ -973,6 +1204,7 @@ PHP_METHOD(RdKafka_KafkaConsumer, oauthbearerSetTokenFailure)
 PHP_METHOD(RdKafka_KafkaConsumer, getRebalanceProtocol)
 {
     object_intern *intern;
+    const char *protocol;
 
     ZEND_PARSE_PARAMETERS_NONE();
 
@@ -981,7 +1213,15 @@ PHP_METHOD(RdKafka_KafkaConsumer, getRebalanceProtocol)
         return;
     }
 
-    RETURN_STRING(rd_kafka_rebalance_protocol(intern->rk));
+    // NULL once the consumer group has closed, which can happen before
+    // close() destroys the client
+    protocol = rd_kafka_rebalance_protocol(intern->rk);
+    if (!protocol) {
+        zend_throw_exception(ce_kafka_exception, "The consumer group has been closed", RD_KAFKA_RESP_ERR__STATE);
+        return;
+    }
+
+    RETURN_STRING(protocol);
 }
 /* }}} */
 
