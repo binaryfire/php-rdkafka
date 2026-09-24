@@ -40,13 +40,11 @@ if ($msg === null) {
 
 ### Invalid arguments throw exceptions
 
-Some invalid arguments previously caused a fatal error or were silently changed. They now throw an exception:
+Check callers that rely on invalid values being converted or truncated. These arguments now throw exceptions:
 
 - A topic partition list containing anything other than `RdKafka\TopicPartition` objects throws a `TypeError`. So does a `KafkaConsumer::commit()` or `commitAsync()` argument that is not a `Message`, an array or `null`.
 - A null byte in a topic name, configuration name or value, broker list, consumer group metadata ID, or OAUTHBEARER token, principal or extension throws a `ValueError` instead of the string being cut short at that byte. Committing a `Message` whose `topic_name` contains a null byte throws an `RdKafka\Exception`.
 - `oauthbearerSetToken()` throws an `InvalidArgumentException` when `$lifetime_ms` is an empty, non-numeric or out-of-range string, or an infinite, NaN or out-of-range float. Types other than int, float or string throw a `TypeError`.
-
-`KafkaConsumer::subscribe()` no longer converts the values of the given array in place. When converting a topic name or an `oauthbearerSetToken()` extension value to a string throws, that exception is passed on and the subscription or token is left unchanged. The native client is now checked after argument conversion and, for commits, after reading the message properties. This prevents calls into librdkafka with a closed client.
 
 ### Conf::dump() does not include topic-level properties
 
