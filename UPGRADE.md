@@ -8,10 +8,6 @@
 
 **New methods on `KafkaConsumer`.** The high-level consumer gained `poll()`, `oauthbearerSetToken()`, and `oauthbearerSetTokenFailure()`, and now supports SASL/SSL OAUTHBEARER authentication end-to-end.
 
-**Record conversion corrected.** `ProducerTopic::producev()` now sends integer header keys instead of ignoring them and later headers, and no longer modifies caller-owned header values.
-
-**Ordered message headers.** `Message::getHeaderPairs()` returns headers in their original order, including repeated names and null values, and `ProducerTopic::producev()` accepts headers in the same form.
-
 **Internal fixes.** A missing `zend_restore_error_handling()` call in the KafkaConsumer error path was corrected. Several internal type mismatches were fixed.
 
 **PHP 7 compatibility shims removed.** Internal compatibility code for PHP 7 has been cleaned up; this has no effect on behaviour for PHP 8 users.
@@ -42,39 +38,13 @@ if ($msg === null) {
 
 `RD_KAFKA_RESP_ERR__TIMED_OUT` on a returned `Message` now means an actual timeout error originating from librdkafka, not a poll window expiry.
 
-### Record conversion corrections
+### Header arrays passed to `producev()`
 
-`ProducerTopic::producev()` now sends integer header keys as their decimal names and continues processing later headers. Header values are converted without modifying the supplied array, and a conversion exception prevents the message from being enqueued. Existing scalar and null value coercion is unchanged.
+If you pass a list of arrays as `$headers`, check its shape. A list whose first element is an array now selects ordered pairs. Each pair must contain exactly two entries: a string name at index `0` and a string or null value at index `1`. Malformed pairs throw `InvalidArgumentException`. This input shape used to send no headers. Ordinary header maps keep their existing value coercion.
 
-Header names with embedded null bytes are passed to librdkafka with their full length. The existing `Message::$headers` map may expose only the prefix because librdkafka's read API does not return the header name length.
+### Serialized messages
 
-`Message::$timestamp` is now populated for successful messages with a null payload.
-
-### Ordered message headers
-
-`Message::$headers` maps each header name to a single value, so a repeated name keeps only its last value and null values become empty strings. `Message::getHeaderPairs()` returns every header as a `[name, value]` pair, in order, and keeps null values:
-
-```php
-foreach ($message->getHeaderPairs() as [$name, $value]) {
-    // $value is null for headers without a value
-}
-```
-
-As with `Message::$headers`, names containing null bytes are returned only up to the first null byte.
-
-`ProducerTopic::producev()` accepts the same list of pairs as its `$headers` argument:
-
-```php
-$topic->producev(RD_KAFKA_PARTITION_UA, 0, $payload, $key, [
-    ['trace', 'first'],
-    ['trace', 'second'],
-    ['optional', null],
-]);
-```
-
-A list whose first element is an array is read as pairs. Each pair must contain a string name and a string or null value, otherwise an `InvalidArgumentException` is thrown and the message is not enqueued. Other arrays keep mapping names to values. Previously, a list of arrays sent no headers.
-
-`Message` objects have a new private `native_headers` property, which appears in `var_dump()` output and serialized messages. For messages created in PHP, or serialized by an earlier version, `getHeaderPairs()` builds the pairs from `Message::$headers`.
+`Message` has a new private `native_headers` property. Update tests or tooling that compare exact object dumps or serialized output. Messages serialized by an earlier version can still be read; they do not need to be rewritten.
 
 ### Conf::dump() does not include topic-level properties
 
