@@ -48,4 +48,4 @@ Releasing topic releases parent
 bool(true)
 Topic is invalidated on close
 Exception
-RdKafka\Topic::__construct() has not been called
+RdKafka\Topic is not initialized or its client has been closed
