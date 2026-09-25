@@ -187,10 +187,12 @@
     <file role="test" name="kafka_consumer_commit_message_properties.phpt"/>
     <file role="test" name="kafka_consumer_consume_returns_message_on_eof.phpt"/>
     <file role="test" name="kafka_consumer_consume_returns_null_on_timeout.phpt"/>
+    <file role="test" name="kafka_consumer_consume_with_manual_assignment.phpt"/>
     <file role="test" name="kafka_consumer_destruct_assigned.phpt"/>
     <file role="test" name="kafka_consumer_get_rebalance_protocol.phpt"/>
     <file role="test" name="kafka_consumer_kip848.phpt"/>
     <file role="test" name="kafka_consumer_new_topic_no_memleak.phpt"/>
+    <file role="test" name="kafka_consumer_poll_not_available.phpt"/>
     <file role="test" name="kafka_consumer_split_partition_queue.phpt"/>
     <file role="test" name="kafka_consumer_split_partition_queue_fetching.phpt"/>
     <file role="test" name="kafka_consumer_split_partition_queue_liveness.phpt"/>
