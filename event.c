@@ -97,14 +97,24 @@ static kafka_event_object *get_kafka_event_object(zval *zev) /* {{{ */
 
 void kafka_event_new(zval *return_value, rd_kafka_event_t *rkev, zval *zrk) /* {{{ */
 {
-    kafka_event_object *intern;
+    kafka_event_object *intern = NULL;
 
-    if (object_init_ex(return_value, ce_kafka_event) != SUCCESS) {
+    // The object owns the event only once it is created, so release the
+    // event on a fatal error while allocating the object
+    zend_try {
+        if (object_init_ex(return_value, ce_kafka_event) == SUCCESS) {
+            intern = Z_RDKAFKA_P(kafka_event_object, return_value);
+        }
+    } zend_catch {
+        rd_kafka_event_destroy(rkev);
+        zend_bailout();
+    } zend_end_try();
+
+    if (!intern) {
         rd_kafka_event_destroy(rkev);
         return;
     }
 
-    intern = Z_RDKAFKA_P(kafka_event_object, return_value);
     intern->rkev = rkev;
     ZVAL_COPY(&intern->zrk, zrk);
 }
@@ -168,11 +178,10 @@ PHP_METHOD(RdKafka_Event, getError)
 /* }}} */
 
 /* {{{ proto ?string RdKafka\Event::getErrorString()
-   Returns a human-readable error string, or null if there was no error. */
+   Returns a human-readable error string, which is "Success" if there was no error. */
 PHP_METHOD(RdKafka_Event, getErrorString)
 {
     kafka_event_object *intern;
-    const char *errstr;
 
     if (zend_parse_parameters_none() == FAILURE) {
         return;
@@ -183,12 +192,7 @@ PHP_METHOD(RdKafka_Event, getErrorString)
         return;
     }
 
-    errstr = rd_kafka_event_error_string(intern->rkev);
-    if (errstr == NULL) {
-        RETURN_NULL();
-    }
-
-    RETURN_STRING(errstr);
+    RETURN_STRING(rd_kafka_event_error_string(intern->rkev));
 }
 /* }}} */
 
