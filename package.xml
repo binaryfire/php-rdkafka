@@ -123,20 +123,27 @@
     <file role="test" name="bug74.phpt"/>
     <file role="test" name="bug88.phpt"/>
     <file role="test" name="bugConfSetArgument.phpt"/>
+    <file role="test" name="callback_dr_msg_cb_args.phpt"/>
     <file role="test" name="callback_exception_consumer.phpt"/>
     <file role="test" name="callback_exception_producer.phpt"/>
     <file role="test" name="callback_gc_cycles.phpt"/>
+    <file role="test" name="callback_log_cb.phpt"/>
     <file role="test" name="callback_string_callable.phpt"/>
     <file role="test" name="conf_callbacks_integration.phpt"/>
     <file role="test" name="conf_callbacks_rdkafka11.phpt"/>
     <file role="test" name="conf_callbacks.phpt"/>
+    <file role="test" name="conf_dump.phpt"/>
     <file role="test" name="conf_get_default_topic_conf.phpt"/>
+    <file role="test" name="conf_get.phpt"/>
     <file role="test" name="conf.phpt"/>
     <file role="test" name="conf_setDefaultTopicConf8.phpt"/>
     <file role="test" name="conf_setDefaultTopicConf.phpt"/>
     <file role="test" name="constants.phpt"/>
     <file role="test" name="construct_twice.phpt"/>
+    <file role="test" name="consume_batch_invalid_batch_size.phpt"/>
     <file role="test" name="controller_id.phpt"/>
+    <file role="test" name="deprecated_errno2err.phpt"/>
+    <file role="test" name="deprecated_set_logger.phpt"/>
     <file role="test" name="err2name.phpt"/>
     <file role="test" name="fatal_error_commit_transaction.phpt"/>
     <file role="test" name="fatal_error_conf_dump.phpt"/>
@@ -171,15 +178,19 @@
     <file role="test" name="kafka_consumer_close_async_error.phpt"/>
     <file role="test" name="kafka_consumer_close_async_handoff.phpt"/>
     <file role="test" name="kafka_consumer_close_async_unavailable.phpt"/>
+    <file role="test" name="kafka_consumer_close_destroy.phpt"/>
     <file role="test" name="kafka_consumer_close_error.phpt"/>
     <file role="test" name="kafka_consumer_close_in_callback.phpt"/>
     <file role="test" name="kafka_consumer_close_in_rebalance_callback.phpt"/>
     <file role="test" name="kafka_consumer_close_rebalance_exception.phpt"/>
     <file role="test" name="kafka_consumer_closed_during_argument_conversion.phpt"/>
     <file role="test" name="kafka_consumer_commit_message_properties.phpt"/>
+    <file role="test" name="kafka_consumer_consume_returns_message_on_eof.phpt"/>
+    <file role="test" name="kafka_consumer_consume_returns_null_on_timeout.phpt"/>
     <file role="test" name="kafka_consumer_destruct_assigned.phpt"/>
     <file role="test" name="kafka_consumer_get_rebalance_protocol.phpt"/>
     <file role="test" name="kafka_consumer_kip848.phpt"/>
+    <file role="test" name="kafka_consumer_new_topic_no_memleak.phpt"/>
     <file role="test" name="kafka_consumer_split_partition_queue.phpt"/>
     <file role="test" name="kafka_consumer_split_partition_queue_fetching.phpt"/>
     <file role="test" name="kafka_consumer_split_partition_queue_liveness.phpt"/>
@@ -232,6 +243,8 @@
     <file role="test" name="topic_partition_001.phpt"/>
     <file role="test" name="topic_partition_002.phpt"/>
     <file role="test" name="topic_partition_list_argument.phpt"/>
+    <file role="test" name="topic_partition_metadata.phpt"/>
+    <file role="test" name="transaction_error_no_memleak.phpt"/>
    </dir>
   </dir>
  </contents>
