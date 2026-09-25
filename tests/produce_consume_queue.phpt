@@ -88,6 +88,15 @@ while (count($receivedTopicEofs) < 2) {
     }
 
     $messages[] = sprintf("Got message: %s from %s", $msg->payload, $msg->topic_name);
+
+    // Events polled from the queue would drop its remaining messages
+    if (count($messages) === 1) {
+        try {
+            $queue->poll(1000);
+        } catch (RdKafka\Exception $e) {
+            echo $e->getMessage(), "\n";
+        }
+    }
 }
 
 sort($messages);
@@ -95,6 +104,7 @@ echo implode("\n", $messages), "\n";
 
 --EXPECTF--
 10 messages delivered
+RdKafka\Queue::poll() cannot read messages, use RdKafka\Queue::consume()
 Got message: message 0 from test_rdkafka_0_%s
 Got message: message 1 from test_rdkafka_1_%s
 Got message: message 2 from test_rdkafka_0_%s
