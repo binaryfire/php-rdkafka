@@ -128,6 +128,8 @@
     <file role="test" name="callback_exception_producer.phpt"/>
     <file role="test" name="callback_gc_cycles.phpt"/>
     <file role="test" name="callback_log_cb.phpt"/>
+    <file role="test" name="callback_log_cb_log_queue.phpt"/>
+    <file role="test" name="callback_log_cb_plugin.phpt"/>
     <file role="test" name="callback_string_callable.phpt"/>
     <file role="test" name="conf_callbacks_integration.phpt"/>
     <file role="test" name="conf_callbacks_rdkafka11.phpt"/>
