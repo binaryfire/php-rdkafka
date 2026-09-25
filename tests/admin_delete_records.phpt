@@ -40,7 +40,10 @@ for ($i = 0; $i < 10; $i++) {
     $writer->poll(0);
 }
 
-$writer->flush(10 * 1000);
+$result = $writer->flush(10 * 1000);
+if (RD_KAFKA_RESP_ERR_NO_ERROR !== $result) {
+    throw new Exception(rd_kafka_err2str($result), $result);
+}
 
 // DELETE RECORDS up to offset 5
 $opts = $producer->newAdminOptions(RD_KAFKA_ADMIN_OP_DELETERECORDS);

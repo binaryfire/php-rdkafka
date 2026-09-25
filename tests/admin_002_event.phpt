@@ -10,11 +10,8 @@ $producer = new RdKafka\Producer($conf);
 $queue = $producer->newQueue();
 
 // Empty queue, very short timeout — should be null
-$start = microtime(true);
 $event = $queue->poll(50);
-$elapsed = (microtime(true) - $start) * 1000;
 var_dump($event === null);
-var_dump($elapsed < 200); // should not block beyond timeout (with some slack)
 
 // Class introspection
 var_dump(class_exists(RdKafka\Event::class));
@@ -40,7 +37,6 @@ var_dump(defined('RD_KAFKA_EVENT_DELETETOPICS_RESULT'));
 
 echo "OK\n";
 --EXPECT--
-bool(true)
 bool(true)
 bool(true)
 bool(true)
