@@ -193,8 +193,10 @@ PHP_METHOD(RdKafka_KafkaConsumer, __construct)
 
     conf_intern = get_kafka_conf_object(zconf);
     if (conf_intern) {
-        conf = rd_kafka_conf_dup(conf_intern->u.conf);
+        // Copying allocates, so copy before duplicating the configuration,
+        // which a fatal error would leak
         kafka_conf_callbacks_copy(&intern->cbs, &conf_intern->cbs);
+        conf = rd_kafka_conf_dup(conf_intern->u.conf);
         intern->cbs.zrk = *getThis();
         rd_kafka_conf_set_opaque(conf, &intern->cbs);
     }
@@ -311,7 +313,13 @@ static void consumer_incremental_op(int assign, INTERNAL_FUNCTION_PARAMETERS) /*
     rd_kafka_topic_partition_list_destroy(topics);
 
     if (err) {
-        zend_throw_exception(ce_kafka_exception, rd_kafka_error_string(err), 0);
+        zend_try {
+            zend_throw_exception(ce_kafka_exception, rd_kafka_error_string(err), 0);
+        } zend_catch {
+            rd_kafka_error_destroy(err);
+            zend_bailout();
+        } zend_end_try();
+
         rd_kafka_error_destroy(err);
         return;
     }
@@ -360,8 +368,7 @@ PHP_METHOD(RdKafka_KafkaConsumer, getAssignment)
         return;
     }
 
-    kafka_topic_partition_list_to_array(return_value, topics);
-    rd_kafka_topic_partition_list_destroy(topics);
+    kafka_topic_partition_list_to_array_and_destroy(return_value, topics);
 }
 /* }}} */
 
@@ -387,12 +394,18 @@ PHP_METHOD(RdKafka_KafkaConsumer, subscribe)
 
     topics = rd_kafka_topic_partition_list_new(zend_hash_num_elements(htopics));
 
-    for (zend_hash_internal_pointer_reset_ex(htopics, &pos);
-            (zv = zend_hash_get_current_data_ex(htopics, &pos)) != NULL;
-            zend_hash_move_forward_ex(htopics, &pos)) {
-        convert_to_string_ex(zv);
-        rd_kafka_topic_partition_list_add(topics, Z_STRVAL_P(zv), RD_KAFKA_PARTITION_UA);
-    }
+    // Converting a topic can run PHP code, which can raise a fatal error
+    zend_try {
+        for (zend_hash_internal_pointer_reset_ex(htopics, &pos);
+                (zv = zend_hash_get_current_data_ex(htopics, &pos)) != NULL;
+                zend_hash_move_forward_ex(htopics, &pos)) {
+            convert_to_string_ex(zv);
+            rd_kafka_topic_partition_list_add(topics, Z_STRVAL_P(zv), RD_KAFKA_PARTITION_UA);
+        }
+    } zend_catch {
+        rd_kafka_topic_partition_list_destroy(topics);
+        zend_bailout();
+    } zend_end_try();
 
     err = rd_kafka_subscribe(intern->rk, topics);
 
@@ -430,11 +443,16 @@ PHP_METHOD(RdKafka_KafkaConsumer, getSubscription)
         return;
     }
 
-    array_init_size(return_value, topics->cnt);
+    zend_try {
+        array_init_size(return_value, topics->cnt);
 
-    for (i = 0; i < topics->cnt; i++) {
-        add_next_index_string(return_value, topics->elems[i].topic);
-    }
+        for (i = 0; i < topics->cnt; i++) {
+            add_next_index_string(return_value, topics->elems[i].topic);
+        }
+    } zend_catch {
+        rd_kafka_topic_partition_list_destroy(topics);
+        zend_bailout();
+    } zend_end_try();
 
     rd_kafka_topic_partition_list_destroy(topics);
 }
@@ -484,11 +502,24 @@ PHP_METHOD(RdKafka_KafkaConsumer, consume)
 
     rkmessage = rd_kafka_consumer_poll(intern->rk, timeout_ms);
 
+    if (intern->cbs.bailout) {
+        if (rkmessage) {
+            rd_kafka_message_destroy(rkmessage);
+        }
+        kafka_conf_callbacks_raise_bailout(&intern->cbs);
+    }
+
     if (!rkmessage) {
         RETURN_NULL();
     }
 
-    kafka_message_new(return_value, rkmessage, NULL);
+    zend_try {
+        kafka_message_new(return_value, rkmessage, NULL);
+    } zend_catch {
+        rd_kafka_message_destroy(rkmessage);
+        zend_bailout();
+    } zend_end_try();
+
     rd_kafka_message_destroy(rkmessage);
 }
 /* }}} */
@@ -499,6 +530,7 @@ PHP_METHOD(RdKafka_KafkaConsumer, getConsumerQueue)
 {
     object_intern *intern;
     kafka_queue_object *queue_intern;
+    zend_string *registry_key;
 
     if (zend_parse_parameters_none() == FAILURE) {
         return;
@@ -520,7 +552,10 @@ PHP_METHOD(RdKafka_KafkaConsumer, getConsumerQueue)
         RETURN_OBJ_COPY(&queue_intern->std);
     }
 
-    kafka_queue_object_init(return_value, getThis(), &intern->queues, rd_kafka_queue_get_consumer(intern->rk), zend_string_init(ZEND_STRL("consumer"), 0));
+    // Allocated before acquiring the queue, which would leak on a fatal error
+    registry_key = zend_string_init(ZEND_STRL("consumer"), 0);
+
+    kafka_queue_object_init(return_value, getThis(), &intern->cbs, &intern->queues, rd_kafka_queue_get_consumer(intern->rk), registry_key);
 }
 /* }}} */
 
@@ -576,7 +611,7 @@ PHP_METHOD(RdKafka_KafkaConsumer, splitPartitionQueue)
         return;
     }
 
-    if (!kafka_queue_object_init(return_value, getThis(), &intern->queues, rkqu, registry_key)) {
+    if (!kafka_queue_object_init(return_value, getThis(), &intern->cbs, &intern->queues, rkqu, registry_key)) {
         return;
     }
 
@@ -710,6 +745,10 @@ PHP_METHOD(RdKafka_KafkaConsumer, close)
 
     err = kafka_consumer_close_and_destroy(intern);
 
+    if (intern->cbs.bailout) {
+        kafka_conf_callbacks_raise_bailout(&intern->cbs);
+    }
+
     if (err != RD_KAFKA_RESP_ERR_NO_ERROR) {
         zend_throw_exception(ce_kafka_exception, rd_kafka_err2str(err), err);
         return;
@@ -751,9 +790,7 @@ PHP_METHOD(RdKafka_KafkaConsumer, closeAsync)
     rd_kafka_queue_destroy(queue);
 
     if (error != NULL) {
-        create_kafka_error(return_value, error);
-        rd_kafka_error_destroy(error);
-        zend_throw_exception_object(return_value);
+        throw_kafka_error(return_value, error);
         return;
     }
 
@@ -868,6 +905,14 @@ PHP_METHOD(RdKafka_KafkaConsumer, newTopic)
         return;
     }
 
+    // Create the object first, so that a fatal error while allocating it
+    // cannot leak the native topic
+    if (object_init_ex(return_value, ce_kafka_kafka_consumer_topic) != SUCCESS) {
+        return;
+    }
+
+    topic_intern = Z_RDKAFKA_P(kafka_topic_object, return_value);
+
     if (zconf) {
         conf_intern = get_kafka_conf_object(zconf);
         if (conf_intern) {
@@ -878,25 +923,24 @@ PHP_METHOD(RdKafka_KafkaConsumer, newTopic)
     rkt = rd_kafka_topic_new(intern->rk, topic, conf);
 
     if (!rkt) {
-        return;
+        zval_ptr_dtor(return_value);
+        RETURN_NULL();
     }
 
-    if (object_init_ex(return_value, ce_kafka_kafka_consumer_topic) != SUCCESS) {
-        return;
-    }
-
-    topic_intern = Z_RDKAFKA_P(kafka_topic_object, return_value);
-    if (!topic_intern) {
-        return;
-    }
+    // An unregistered topic would not be released before its client is
+    // destroyed, so destroy it right away if registering it fails
+    zend_try {
+        zend_hash_index_add_ptr(&intern->topics, (zend_ulong)topic_intern, topic_intern);
+    } zend_catch {
+        rd_kafka_topic_destroy(rkt);
+        zend_bailout();
+    } zend_end_try();
 
     topic_intern->rkt = rkt;
     topic_intern->registry = &intern->topics;
     topic_intern->zrk = *getThis();
 
     Z_ADDREF_P(&topic_intern->zrk);
-
-    zend_hash_index_add_ptr(&intern->topics, (zend_ulong)topic_intern, topic_intern);
 }
 /* }}} */
 
@@ -931,8 +975,7 @@ PHP_METHOD(RdKafka_KafkaConsumer, getCommittedOffsets)
         zend_throw_exception(ce_kafka_exception, rd_kafka_err2str(err), err);
         return;
     }
-    kafka_topic_partition_list_to_array(return_value, topics);
-    rd_kafka_topic_partition_list_destroy(topics);
+    kafka_topic_partition_list_to_array_and_destroy(return_value, topics);
 }
 /* }}} */
 
@@ -968,8 +1011,7 @@ PHP_METHOD(RdKafka_KafkaConsumer, getOffsetPositions)
         zend_throw_exception(ce_kafka_exception, rd_kafka_err2str(err), err);
         return;
     }
-    kafka_topic_partition_list_to_array(return_value, topics);
-    rd_kafka_topic_partition_list_destroy(topics);
+    kafka_topic_partition_list_to_array_and_destroy(return_value, topics);
 }
 /* }}} */
 
@@ -1004,8 +1046,7 @@ PHP_METHOD(RdKafka_KafkaConsumer, offsetsForTimes)
         zend_throw_exception(ce_kafka_exception, rd_kafka_err2str(err), err);
         return;
     }
-    kafka_topic_partition_list_to_array(return_value, topicPartitions);
-    rd_kafka_topic_partition_list_destroy(topicPartitions);
+    kafka_topic_partition_list_to_array_and_destroy(return_value, topicPartitions);
 }
 /* }}} */
 
@@ -1076,8 +1117,7 @@ PHP_METHOD(RdKafka_KafkaConsumer, pausePartitions)
         return;
     }
 
-    kafka_topic_partition_list_to_array(return_value, topars);
-    rd_kafka_topic_partition_list_destroy(topars);
+    kafka_topic_partition_list_to_array_and_destroy(return_value, topars);
 }
 /* }}} */
 
@@ -1112,8 +1152,7 @@ PHP_METHOD(RdKafka_KafkaConsumer, resumePartitions)
         return;
     }
 
-    kafka_topic_partition_list_to_array(return_value, topars);
-    rd_kafka_topic_partition_list_destroy(topars);
+    kafka_topic_partition_list_to_array_and_destroy(return_value, topars);
 }
 /* }}} */
 
@@ -1123,6 +1162,7 @@ PHP_METHOD(RdKafka_KafkaConsumer, poll)
 {
     object_intern *intern;
     zend_long timeout;
+    int events;
 
     if (zend_parse_parameters(ZEND_NUM_ARGS(), "l", &timeout) == FAILURE) {
         return;
@@ -1133,7 +1173,13 @@ PHP_METHOD(RdKafka_KafkaConsumer, poll)
         return;
     }
 
-    RETURN_LONG(rd_kafka_poll(intern->rk, timeout));
+    events = rd_kafka_poll(intern->rk, timeout);
+
+    if (intern->cbs.bailout) {
+        kafka_conf_callbacks_raise_bailout(&intern->cbs);
+    }
+
+    RETURN_LONG(events);
 }
 /* }}} */
 
@@ -1244,7 +1290,13 @@ PHP_METHOD(RdKafka_KafkaConsumer, getConsumerGroupMetadata)
         return;
     }
 
-    object_init_ex(return_value, ce_kafka_consumer_group_metadata);
+    zend_try {
+        object_init_ex(return_value, ce_kafka_consumer_group_metadata);
+    } zend_catch {
+        rd_kafka_consumer_group_metadata_destroy(cgmd);
+        zend_bailout();
+    } zend_end_try();
+
     cgmd_intern = Z_RDKAFKA_P(kafka_consumer_group_metadata_object, return_value);
     cgmd_intern->cgmd = cgmd;
 }

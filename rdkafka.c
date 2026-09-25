@@ -139,8 +139,10 @@ static void kafka_init(zval *this_ptr, rd_kafka_type_t type, zval *zconf) /* {{{
     if (zconf) {
         conf_intern = get_kafka_conf_object(zconf);
         if (conf_intern) {
-            conf = rd_kafka_conf_dup(conf_intern->u.conf);
+            // Copying allocates, so copy before duplicating the configuration,
+            // which a fatal error would leak
             kafka_conf_callbacks_copy(&intern->cbs, &conf_intern->cbs);
+            conf = rd_kafka_conf_dup(conf_intern->u.conf);
         }
     }
 
@@ -314,7 +316,7 @@ PHP_METHOD(RdKafka_Consumer, newQueue)
         return;
     }
 
-    kafka_queue_object_init(return_value, getThis(), &intern->queues, rkqu, NULL);
+    kafka_queue_object_init(return_value, getThis(), &intern->cbs, &intern->queues, rkqu, NULL);
 }
 /* }}} */
 
@@ -505,19 +507,6 @@ PHP_METHOD(RdKafka, newTopic)
         return;
     }
 
-    if (zconf) {
-        conf_intern = get_kafka_conf_object(zconf);
-        if (conf_intern) {
-            conf = rd_kafka_topic_conf_dup(conf_intern->u.topic_conf);
-        }
-    }
-
-    rkt = rd_kafka_topic_new(intern->rk, topic, conf);
-
-    if (!rkt) {
-        return;
-    }
-
     switch (intern->type) {
         case RD_KAFKA_CONSUMER:
             topic_type = ce_kafka_consumer_topic;
@@ -529,22 +518,42 @@ PHP_METHOD(RdKafka, newTopic)
             return;
     }
 
+    // Create the object first, so that a fatal error while allocating it
+    // cannot leak the native topic
     if (object_init_ex(return_value, topic_type) != SUCCESS) {
         return;
     }
 
     topic_intern = Z_RDKAFKA_P(kafka_topic_object, return_value);
-    if (!topic_intern) {
-        return;
+
+    if (zconf) {
+        conf_intern = get_kafka_conf_object(zconf);
+        if (conf_intern) {
+            conf = rd_kafka_topic_conf_dup(conf_intern->u.topic_conf);
+        }
     }
+
+    rkt = rd_kafka_topic_new(intern->rk, topic, conf);
+
+    if (!rkt) {
+        zval_ptr_dtor(return_value);
+        RETURN_NULL();
+    }
+
+    // An unregistered topic would not be released before its client is
+    // destroyed, so destroy it right away if registering it fails
+    zend_try {
+        zend_hash_index_add_ptr(&intern->topics, (zend_ulong)topic_intern, topic_intern);
+    } zend_catch {
+        rd_kafka_topic_destroy(rkt);
+        zend_bailout();
+    } zend_end_try();
 
     topic_intern->rkt = rkt;
     topic_intern->registry = &intern->topics;
     topic_intern->zrk = *getThis();
 
     Z_ADDREF_P(&topic_intern->zrk);
-
-    zend_hash_index_add_ptr(&intern->topics, (zend_ulong)topic_intern, topic_intern);
 }
 /* }}} */
 
@@ -573,6 +582,7 @@ PHP_METHOD(RdKafka, poll)
 {
     kafka_object *intern;
     zend_long timeout;
+    int events;
 
     if (zend_parse_parameters(ZEND_NUM_ARGS(), "l", &timeout) == FAILURE) {
         return;
@@ -583,7 +593,13 @@ PHP_METHOD(RdKafka, poll)
         return;
     }
 
-    RETURN_LONG(rd_kafka_poll(intern->rk, timeout));
+    events = rd_kafka_poll(intern->rk, timeout);
+
+    if (intern->cbs.bailout) {
+        kafka_conf_callbacks_raise_bailout(&intern->cbs);
+    }
+
+    RETURN_LONG(events);
 }
 /* }}} */
 
@@ -593,6 +609,7 @@ PHP_METHOD(RdKafka, getMainQueue)
 {
     kafka_object *intern;
     kafka_queue_object *queue_intern;
+    zend_string *registry_key;
 
     if (zend_parse_parameters_none() == FAILURE) {
         return;
@@ -608,7 +625,10 @@ PHP_METHOD(RdKafka, getMainQueue)
         RETURN_OBJ_COPY(&queue_intern->std);
     }
 
-    kafka_queue_object_init(return_value, getThis(), &intern->queues, rd_kafka_queue_get_main(intern->rk), zend_string_init(ZEND_STRL("main"), 0));
+    // Allocated before acquiring the queue, which would leak on a fatal error
+    registry_key = zend_string_init(ZEND_STRL("main"), 0);
+
+    kafka_queue_object_init(return_value, getThis(), &intern->cbs, &intern->queues, rd_kafka_queue_get_main(intern->rk), registry_key);
 }
 /* }}} */
 
@@ -618,6 +638,7 @@ PHP_METHOD(RdKafka, flush)
 {
     kafka_object *intern;
     zend_long timeout;
+    rd_kafka_resp_err_t err;
 
     if (zend_parse_parameters(ZEND_NUM_ARGS(), "l", &timeout) == FAILURE) {
         return;
@@ -628,7 +649,13 @@ PHP_METHOD(RdKafka, flush)
         return;
     }
 
-    RETURN_LONG(rd_kafka_flush(intern->rk, timeout));
+    err = rd_kafka_flush(intern->rk, timeout);
+
+    if (intern->cbs.bailout) {
+        kafka_conf_callbacks_raise_bailout(&intern->cbs);
+    }
+
+    RETURN_LONG(err);
 }
 /* }}} */
 
@@ -719,8 +746,7 @@ PHP_METHOD(RdKafka, offsetsForTimes)
         zend_throw_exception(ce_kafka_exception, rd_kafka_err2str(err), err);
         return;
     }
-    kafka_topic_partition_list_to_array(return_value, topicPartitions);
-    rd_kafka_topic_partition_list_destroy(topicPartitions);
+    kafka_topic_partition_list_to_array_and_destroy(return_value, topicPartitions);
 }
 /* }}} */
 
@@ -796,8 +822,7 @@ PHP_METHOD(RdKafka, pausePartitions)
         return;
     }
 
-    kafka_topic_partition_list_to_array(return_value, topars);
-    rd_kafka_topic_partition_list_destroy(topars);
+    kafka_topic_partition_list_to_array_and_destroy(return_value, topars);
 }
 /* }}} */
 
@@ -832,8 +857,7 @@ PHP_METHOD(RdKafka, resumePartitions)
         return;
     }
 
-    kafka_topic_partition_list_to_array(return_value, topars);
-    rd_kafka_topic_partition_list_destroy(topars);
+    kafka_topic_partition_list_to_array_and_destroy(return_value, topars);
 }
 /* }}} */
 
@@ -879,9 +903,7 @@ PHP_METHOD(RdKafka_Producer, initTransactions)
         return;
     }
 
-    create_kafka_error(return_value, error);
-    rd_kafka_error_destroy(error);
-    zend_throw_exception_object(return_value);
+    throw_kafka_error(return_value, error);
 }
 /* }}} */
 
@@ -903,9 +925,7 @@ PHP_METHOD(RdKafka_Producer, beginTransaction)
         return;
     }
 
-    create_kafka_error(return_value, error);
-    rd_kafka_error_destroy(error);
-    zend_throw_exception_object(return_value);
+    throw_kafka_error(return_value, error);
 }
 /* }}} */
 
@@ -928,13 +948,18 @@ PHP_METHOD(RdKafka_Producer, commitTransaction)
 
     error = rd_kafka_commit_transaction(intern->rk, timeout_ms);
 
+    if (intern->cbs.bailout) {
+        if (error) {
+            rd_kafka_error_destroy(error);
+        }
+        kafka_conf_callbacks_raise_bailout(&intern->cbs);
+    }
+
     if (NULL == error) {
         return;
     }
 
-    create_kafka_error(return_value, error);
-    rd_kafka_error_destroy(error);
-    zend_throw_exception_object(return_value);
+    throw_kafka_error(return_value, error);
 }
 /* }}} */
 
@@ -957,13 +982,18 @@ PHP_METHOD(RdKafka_Producer, abortTransaction)
 
     error = rd_kafka_abort_transaction(intern->rk, timeout_ms);
 
+    if (intern->cbs.bailout) {
+        if (error) {
+            rd_kafka_error_destroy(error);
+        }
+        kafka_conf_callbacks_raise_bailout(&intern->cbs);
+    }
+
     if (NULL == error) {
         return;
     }
 
-    create_kafka_error(return_value, error);
-    rd_kafka_error_destroy(error);
-    zend_throw_exception_object(return_value);
+    throw_kafka_error(return_value, error);
 }
 /* }}} */
 
@@ -1002,9 +1032,7 @@ PHP_METHOD(RdKafka_Producer, sendOffsetsToTransaction)
         return;
     }
 
-    create_kafka_error(return_value, error);
-    rd_kafka_error_destroy(error);
-    zend_throw_exception_object(return_value);
+    throw_kafka_error(return_value, error);
 }
 /* }}} */
 

@@ -72,6 +72,7 @@ void kafka_queue_object_pre_free(kafka_queue_object **pp) /* {{{ */
     rd_kafka_queue_destroy(intern->rkqu);
     intern->rkqu = NULL;
     intern->registry = NULL;
+    intern->cbs = NULL;
 
     if (intern->registry_key) {
         zend_string_release(intern->registry_key);
@@ -154,12 +155,34 @@ kafka_queue_object * get_kafka_queue_object(zval *zrkqu)
 }
 
 /* Takes ownership of rkqu and registry_key. A NULL registry_key registers the
- * queue by its address, so each call returns a distinct queue. */
-kafka_queue_object * kafka_queue_object_init(zval *return_value, zval *zrk, HashTable *registry, rd_kafka_queue_t *rkqu, zend_string *registry_key) /* {{{ */
+ * queue by its address, so each call returns a distinct queue. cbs is the
+ * client's callback state, which consume() checks for a fatal error raised
+ * in a callback. */
+kafka_queue_object * kafka_queue_object_init(zval *return_value, zval *zrk, kafka_conf_callbacks *cbs, HashTable *registry, rd_kafka_queue_t *rkqu, zend_string *registry_key) /* {{{ */
 {
-    kafka_queue_object *intern;
+    kafka_queue_object *intern = NULL;
 
-    if (object_init_ex(return_value, ce_kafka_queue) != SUCCESS) {
+    // The object owns the queue and key only once it is registered, so
+    // release them on a fatal error while allocating either
+    zend_try {
+        if (object_init_ex(return_value, ce_kafka_queue) == SUCCESS) {
+            intern = Z_RDKAFKA_P(kafka_queue_object, return_value);
+
+            if (registry_key) {
+                zend_hash_add_new_ptr(registry, registry_key, intern);
+            } else {
+                zend_hash_index_add_new_ptr(registry, (zend_ulong)intern, intern);
+            }
+        }
+    } zend_catch {
+        rd_kafka_queue_destroy(rkqu);
+        if (registry_key) {
+            zend_string_release(registry_key);
+        }
+        zend_bailout();
+    } zend_end_try();
+
+    if (!intern) {
         rd_kafka_queue_destroy(rkqu);
         if (registry_key) {
             zend_string_release(registry_key);
@@ -167,21 +190,15 @@ kafka_queue_object * kafka_queue_object_init(zval *return_value, zval *zrk, Hash
         return NULL;
     }
 
-    intern = Z_RDKAFKA_P(kafka_queue_object, return_value);
     intern->rkqu = rkqu;
     intern->registry = registry;
     intern->registry_key = registry_key;
+    intern->cbs = cbs;
 
     // The queue keeps its client alive so that it is released before the
     // client is destroyed. The client's registry only points back to the
     // queue, so it can invalidate it when the client is closed.
     ZVAL_COPY(&intern->zrk, zrk);
-
-    if (registry_key) {
-        zend_hash_add_new_ptr(registry, registry_key, intern);
-    } else {
-        zend_hash_index_add_new_ptr(registry, (zend_ulong)intern, intern);
-    }
 
     return intern;
 }
@@ -207,6 +224,13 @@ PHP_METHOD(RdKafka_Queue, consume)
 
     message = rd_kafka_consume_queue(intern->rkqu, timeout_ms);
 
+    if (intern->cbs->bailout) {
+        if (message) {
+            rd_kafka_message_destroy(message);
+        }
+        kafka_conf_callbacks_raise_bailout(intern->cbs);
+    }
+
     if (!message) {
         err = rd_kafka_last_error();
         // A callback exception interrupts consumption; let it propagate
@@ -218,7 +242,12 @@ PHP_METHOD(RdKafka_Queue, consume)
         return;
     }
 
-    kafka_message_new(return_value, message, NULL);
+    zend_try {
+        kafka_message_new(return_value, message, NULL);
+    } zend_catch {
+        rd_kafka_message_destroy(message);
+        zend_bailout();
+    } zend_end_try();
 
     rd_kafka_message_destroy(message);
 }

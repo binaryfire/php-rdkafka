@@ -142,6 +142,29 @@ void kafka_conf_call_function(kafka_conf_callbacks *cbs, rd_kafka_t *rk, zend_fc
     cbs->callback_depth--;
 } /* }}} */
 
+/* Called when a fatal error reaches a callback wrapper. The error cannot
+ * unwind through librdkafka, which still has to release what it passed to the
+ * callback. The remaining callbacks of this dispatch are skipped, and the
+ * method that called librdkafka raises the error again once it returns. */
+void kafka_conf_callbacks_defer_bailout(kafka_conf_callbacks *cbs, rd_kafka_t *rk, uint32_t callback_depth, zend_bool yield) /* {{{ */
+{
+    cbs->callback_depth = callback_depth;
+    cbs->bailout = 1;
+
+    if (yield && rk) {
+        rd_kafka_yield(rk);
+    }
+} /* }}} */
+
+/* Raises a fatal error deferred by kafka_conf_callbacks_defer_bailout(), once
+ * librdkafka has returned and its results were released */
+ZEND_NORETURN void kafka_conf_callbacks_raise_bailout(kafka_conf_callbacks *cbs) /* {{{ */
+{
+    // Otherwise a shutdown function that uses the client would raise it again
+    cbs->bailout = 0;
+    zend_bailout();
+} /* }}} */
+
 static rd_kafka_resp_err_t kafka_conf_unassign(rd_kafka_t *rk, rd_kafka_topic_partition_list_t *partitions) /* {{{ */
 {
     const char *protocol = rd_kafka_rebalance_protocol(rk);
@@ -223,44 +246,60 @@ kafka_conf_object * get_kafka_conf_object(zval *zconf)
 static void kafka_conf_error_cb(rd_kafka_t *rk, int err, const char *reason, void *opaque)
 {
     kafka_conf_callbacks *cbs = (kafka_conf_callbacks*) opaque;
+    uint32_t callback_depth;
+    zend_bool yield;
     zval args[3];
 
     if (!opaque) {
         return;
     }
 
-    if (!cbs->error) {
+    if (!cbs->error || cbs->bailout) {
         return;
     }
-
-    ZVAL_NULL(&args[0]);
-    ZVAL_NULL(&args[1]);
-    ZVAL_NULL(&args[2]);
-
-    ZVAL_ZVAL(&args[0], &cbs->zrk, 1, 0);
-    ZVAL_LONG(&args[1], err);
-    ZVAL_STRING(&args[2], reason);
 
     // Consumer errors can reach rd_kafka_consume_batch(), whose dispatch loop
     // in librdkafka does not stop right after a callback yields. Only
     // producers yield here until a fixed librdkafka version exists.
-    kafka_conf_call_function(cbs, rk, &cbs->error->fci, &cbs->error->fcc, 3, args, rd_kafka_type(rk) == RD_KAFKA_PRODUCER);
+    yield = rd_kafka_type(rk) == RD_KAFKA_PRODUCER;
+    callback_depth = cbs->callback_depth;
+
+    zend_try {
+        ZVAL_NULL(&args[0]);
+        ZVAL_NULL(&args[1]);
+        ZVAL_NULL(&args[2]);
+
+        ZVAL_ZVAL(&args[0], &cbs->zrk, 1, 0);
+        ZVAL_LONG(&args[1], err);
+        ZVAL_STRING(&args[2], reason);
+
+        kafka_conf_call_function(cbs, rk, &cbs->error->fci, &cbs->error->fcc, 3, args, yield);
+    } zend_catch {
+        kafka_conf_callbacks_defer_bailout(cbs, rk, callback_depth, yield);
+    } zend_end_try();
 }
 
 void kafka_conf_dr_msg_cb(rd_kafka_t *rk, const rd_kafka_message_t *msg, void *opaque)
 {
     kafka_conf_callbacks *cbs = (kafka_conf_callbacks*) opaque;
     zend_string *msg_opaque = msg->_private;
+    uint32_t callback_depth;
     zval args[2];
 
-    if (cbs != NULL && cbs->dr_msg) {
-        ZVAL_NULL(&args[0]);
-        ZVAL_NULL(&args[1]);
+    if (cbs != NULL && cbs->dr_msg && !cbs->bailout) {
+        callback_depth = cbs->callback_depth;
 
-        ZVAL_ZVAL(&args[0], &cbs->zrk, 1, 0);
-        kafka_message_new(&args[1], msg, msg_opaque);
+        zend_try {
+            ZVAL_NULL(&args[0]);
+            ZVAL_NULL(&args[1]);
 
-        kafka_conf_call_function(cbs, rk, &cbs->dr_msg->fci, &cbs->dr_msg->fcc, 2, args, 1);
+            ZVAL_ZVAL(&args[0], &cbs->zrk, 1, 0);
+            kafka_message_new(&args[1], msg, msg_opaque);
+
+            kafka_conf_call_function(cbs, rk, &cbs->dr_msg->fci, &cbs->dr_msg->fcc, 2, args, 1);
+        } zend_catch {
+            kafka_conf_callbacks_defer_bailout(cbs, rk, callback_depth, 1);
+        } zend_end_try();
     }
 
     if (msg_opaque != NULL) {
@@ -271,25 +310,32 @@ void kafka_conf_dr_msg_cb(rd_kafka_t *rk, const rd_kafka_message_t *msg, void *o
 static int kafka_conf_stats_cb(rd_kafka_t *rk, char *json, size_t json_len, void *opaque)
 {
     kafka_conf_callbacks *cbs = (kafka_conf_callbacks*) opaque;
+    uint32_t callback_depth;
     zval args[3];
 
     if (!opaque) {
         return 0;
     }
 
-    if (!cbs->stats) {
+    if (!cbs->stats || cbs->bailout) {
         return 0;
     }
 
-    ZVAL_NULL(&args[0]);
-    ZVAL_NULL(&args[1]);
-    ZVAL_NULL(&args[2]);
+    callback_depth = cbs->callback_depth;
 
-    ZVAL_ZVAL(&args[0], &cbs->zrk, 1, 0);
-    ZVAL_STRING(&args[1], json);
-    ZVAL_LONG(&args[2], json_len);
+    zend_try {
+        ZVAL_NULL(&args[0]);
+        ZVAL_NULL(&args[1]);
+        ZVAL_NULL(&args[2]);
 
-    kafka_conf_call_function(cbs, rk, &cbs->stats->fci, &cbs->stats->fcc, 3, args, 1);
+        ZVAL_ZVAL(&args[0], &cbs->zrk, 1, 0);
+        ZVAL_STRING(&args[1], json);
+        ZVAL_LONG(&args[2], json_len);
+
+        kafka_conf_call_function(cbs, rk, &cbs->stats->fci, &cbs->stats->fcc, 3, args, 1);
+    } zend_catch {
+        kafka_conf_callbacks_defer_bailout(cbs, rk, callback_depth, 1);
+    } zend_end_try();
 
     return 0;
 }
@@ -297,6 +343,7 @@ static int kafka_conf_stats_cb(rd_kafka_t *rk, char *json, size_t json_len, void
 static void kafka_conf_rebalance_cb(rd_kafka_t *rk, rd_kafka_resp_err_t err, rd_kafka_topic_partition_list_t *partitions, void *opaque)
 {
     kafka_conf_callbacks *cbs = (kafka_conf_callbacks*) opaque;
+    uint32_t callback_depth;
     zval args[3];
     zend_bool acknowledged;
 
@@ -316,26 +363,36 @@ static void kafka_conf_rebalance_cb(rd_kafka_t *rk, rd_kafka_resp_err_t err, rd_
         return;
     }
 
-    ZVAL_NULL(&args[0]);
-    ZVAL_NULL(&args[1]);
-    ZVAL_NULL(&args[2]);
-
-    ZVAL_ZVAL(&args[0], &cbs->zrk, 1, 0);
-    ZVAL_LONG(&args[1], err);
-    kafka_topic_partition_list_to_array(&args[2], partitions);
-
     acknowledged = cbs->rebalance_acknowledged;
     cbs->rebalance_acknowledged = 0;
 
-    kafka_conf_call_function(cbs, rk, &cbs->rebalance->fci, &cbs->rebalance->fcc, 3, args, 1);
+    if (!cbs->bailout) {
+        callback_depth = cbs->callback_depth;
+
+        zend_try {
+            ZVAL_NULL(&args[0]);
+            ZVAL_NULL(&args[1]);
+            ZVAL_NULL(&args[2]);
+
+            ZVAL_ZVAL(&args[0], &cbs->zrk, 1, 0);
+            ZVAL_LONG(&args[1], err);
+            kafka_topic_partition_list_to_array(&args[2], partitions);
+
+            kafka_conf_call_function(cbs, rk, &cbs->rebalance->fci, &cbs->rebalance->fcc, 3, args, 1);
+        } zend_catch {
+            kafka_conf_callbacks_defer_bailout(cbs, rk, callback_depth, 1);
+        } zend_end_try();
+    }
 
     // A final close waits for the partitions to be released. Release them if
-    // the callback threw, was skipped because of an earlier exception, or
-    // returned without acknowledging the rebalance.
+    // the callback failed, was skipped because of an earlier exception or
+    // fatal error, or returned without acknowledging the rebalance.
     if (cbs->consumer_close_state == KAFKA_CONSUMER_FINALIZING && !cbs->rebalance_acknowledged) {
         err = kafka_conf_unassign(rk, partitions);
 
-        if (err != RD_KAFKA_RESP_ERR_NO_ERROR) {
+        // A warning could run the user's error handler before a pending
+        // fatal error is raised again
+        if (err != RD_KAFKA_RESP_ERR_NO_ERROR && !cbs->bailout) {
             php_error(E_WARNING, "Failed to unassign partitions: %s", rd_kafka_err2str(err));
         }
     }
@@ -346,70 +403,91 @@ static void kafka_conf_rebalance_cb(rd_kafka_t *rk, rd_kafka_resp_err_t err, rd_
 static void kafka_conf_consume_cb(rd_kafka_message_t *msg, void *opaque)
 {
     kafka_conf_callbacks *cbs = (kafka_conf_callbacks*) opaque;
+    uint32_t callback_depth;
     zval args[2];
 
     if (!opaque) {
         return;
     }
 
-    if (!cbs->consume) {
+    if (!cbs->consume || cbs->bailout) {
         return;
     }
 
-    ZVAL_NULL(&args[0]);
-    ZVAL_NULL(&args[1]);
+    callback_depth = cbs->callback_depth;
 
-    kafka_message_new(&args[0], msg, NULL);
-    ZVAL_ZVAL(&args[1], &cbs->zrk, 1, 0);
+    zend_try {
+        ZVAL_NULL(&args[0]);
+        ZVAL_NULL(&args[1]);
 
-    kafka_conf_call_function(cbs, cbs->rk, &cbs->consume->fci, &cbs->consume->fcc, 2, args, 1);
+        kafka_message_new(&args[0], msg, NULL);
+        ZVAL_ZVAL(&args[1], &cbs->zrk, 1, 0);
+
+        kafka_conf_call_function(cbs, cbs->rk, &cbs->consume->fci, &cbs->consume->fcc, 2, args, 1);
+    } zend_catch {
+        kafka_conf_callbacks_defer_bailout(cbs, cbs->rk, callback_depth, 1);
+    } zend_end_try();
 }
 
 static void kafka_conf_offset_commit_cb(rd_kafka_t *rk, rd_kafka_resp_err_t err, rd_kafka_topic_partition_list_t *partitions, void *opaque)
 {
     kafka_conf_callbacks *cbs = (kafka_conf_callbacks*) opaque;
+    uint32_t callback_depth;
     zval args[3];
 
     if (!opaque) {
         return;
     }
 
-    if (!cbs->offset_commit) {
+    if (!cbs->offset_commit || cbs->bailout) {
         return;
     }
 
-    ZVAL_NULL(&args[0]);
-    ZVAL_NULL(&args[1]);
-    ZVAL_NULL(&args[2]);
+    callback_depth = cbs->callback_depth;
 
-    ZVAL_ZVAL(&args[0], &cbs->zrk, 1, 0);
-    ZVAL_LONG(&args[1], err);
-    kafka_topic_partition_list_to_array(&args[2], partitions);
+    zend_try {
+        ZVAL_NULL(&args[0]);
+        ZVAL_NULL(&args[1]);
+        ZVAL_NULL(&args[2]);
 
-    kafka_conf_call_function(cbs, rk, &cbs->offset_commit->fci, &cbs->offset_commit->fcc, 3, args, 1);
+        ZVAL_ZVAL(&args[0], &cbs->zrk, 1, 0);
+        ZVAL_LONG(&args[1], err);
+        kafka_topic_partition_list_to_array(&args[2], partitions);
+
+        kafka_conf_call_function(cbs, rk, &cbs->offset_commit->fci, &cbs->offset_commit->fcc, 3, args, 1);
+    } zend_catch {
+        kafka_conf_callbacks_defer_bailout(cbs, rk, callback_depth, 1);
+    } zend_end_try();
 }
 
 static void kafka_conf_log_cb(const rd_kafka_t *rk, int level, const char *facility, const char *message)
 {
+    uint32_t callback_depth;
     zval args[4];
 
     kafka_conf_callbacks *cbs = (kafka_conf_callbacks*) rd_kafka_opaque(rk);
 
-    if (!cbs->log) {
+    if (!cbs->log || cbs->bailout) {
         return;
     }
 
-    ZVAL_NULL(&args[0]);
-    ZVAL_NULL(&args[1]);
-    ZVAL_NULL(&args[2]);
-    ZVAL_NULL(&args[3]);
+    callback_depth = cbs->callback_depth;
 
-    ZVAL_ZVAL(&args[0], &cbs->zrk, 1, 0);
-    ZVAL_LONG(&args[1], level);
-    ZVAL_STRING(&args[2], facility);
-    ZVAL_STRING(&args[3], message);
+    zend_try {
+        ZVAL_NULL(&args[0]);
+        ZVAL_NULL(&args[1]);
+        ZVAL_NULL(&args[2]);
+        ZVAL_NULL(&args[3]);
 
-    kafka_conf_call_function(cbs, (rd_kafka_t *) rk, &cbs->log->fci, &cbs->log->fcc, 4, args, 1);
+        ZVAL_ZVAL(&args[0], &cbs->zrk, 1, 0);
+        ZVAL_LONG(&args[1], level);
+        ZVAL_STRING(&args[2], facility);
+        ZVAL_STRING(&args[3], message);
+
+        kafka_conf_call_function(cbs, (rd_kafka_t *) rk, &cbs->log->fci, &cbs->log->fcc, 4, args, 1);
+    } zend_catch {
+        kafka_conf_callbacks_defer_bailout(cbs, (rd_kafka_t *) rk, callback_depth, 1);
+    } zend_end_try();
 }
 
 /* 
@@ -422,26 +500,33 @@ void rd_kafka_conf_set_oauthbearer_token_refresh_cb(
 static void kafka_conf_set_oauthbearer_token_refresh_cb(rd_kafka_t *rk, const char *oauthbearer_config, void *opaque)
 {
     kafka_conf_callbacks *cbs = (kafka_conf_callbacks*) opaque;
+    uint32_t callback_depth;
     zval args[2];
 
     if (!opaque) {
         return;
     }
 
-    if (!cbs->oauthbearer_token_refresh) {
+    if (!cbs->oauthbearer_token_refresh || cbs->bailout) {
         return;
     }
 
-    ZVAL_NULL(&args[0]);
-    ZVAL_NULL(&args[1]);
+    callback_depth = cbs->callback_depth;
 
-    ZVAL_ZVAL(&args[0], &cbs->zrk, 1, 0);
+    zend_try {
+        ZVAL_NULL(&args[0]);
+        ZVAL_NULL(&args[1]);
 
-    if (oauthbearer_config) {
-        ZVAL_STRING(&args[1], oauthbearer_config);
-    }
+        ZVAL_ZVAL(&args[0], &cbs->zrk, 1, 0);
 
-    kafka_conf_call_function(cbs, rk, &cbs->oauthbearer_token_refresh->fci, &cbs->oauthbearer_token_refresh->fcc, 2, args, 1);
+        if (oauthbearer_config) {
+            ZVAL_STRING(&args[1], oauthbearer_config);
+        }
+
+        kafka_conf_call_function(cbs, rk, &cbs->oauthbearer_token_refresh->fci, &cbs->oauthbearer_token_refresh->fcc, 2, args, 1);
+    } zend_catch {
+        kafka_conf_callbacks_defer_bailout(cbs, rk, callback_depth, 1);
+    } zend_end_try();
 }
 
 /* {{{ proto RdKafka\Conf::__construct() */
@@ -494,13 +579,18 @@ PHP_METHOD(RdKafka_Conf, dump)
             return;
     }
 
-    array_init(return_value);
+    zend_try {
+        array_init(return_value);
 
-    for (i = 0; i < cntp; i+=2) {
-        const char *key = dump[i];
-        const char *value = dump[i+1];
-        add_assoc_string(return_value, (char*)key, (char*)value);
-    }
+        for (i = 0; i < cntp; i+=2) {
+            const char *key = dump[i];
+            const char *value = dump[i+1];
+            add_assoc_string(return_value, (char*)key, (char*)value);
+        }
+    } zend_catch {
+        rd_kafka_conf_dump_free(dump, cntp);
+        zend_bailout();
+    } zend_end_try();
 
     rd_kafka_conf_dump_free(dump, cntp);
 }
