@@ -395,6 +395,8 @@ foreach ($event->getCreateTopicsResult() as $result) {
 
 The same shape applies to the other operations — submit on `RdKafka`, poll the queue, then call the matching `RdKafka\Event::get*Result()` accessor (`getDeleteTopicsResult`, `getCreatePartitionsResult`, `getDescribeTopicsResult`, `getDeleteRecordsResult`).
 
+Admin results need their own queue from `newQueue()`, read with `poll()`. `consume()` and `ConsumerTopic::consumeQueueStart()` throw for a queue that has received admin requests, and `poll()` and the admin methods throw for a queue that receives a topic's messages or belongs to a client (`getMainQueue()`, `getConsumerQueue()`, `splitPartitionQueue()`). A queue keeps this use even after it has been drained or `consumeStop()` was called.
+
 If you want a synchronous wrapper, build it in userland:
 
 ``` php
