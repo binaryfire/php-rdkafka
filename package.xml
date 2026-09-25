@@ -123,11 +123,15 @@
     <file role="test" name="admin_001_dtos.phpt"/>
     <file role="test" name="admin_002_event.phpt"/>
     <file role="test" name="admin_003_cross_handle.phpt"/>
+    <file role="test" name="admin_arguments.phpt"/>
     <file role="test" name="admin_create_delete_topics.phpt"/>
     <file role="test" name="admin_create_partitions.phpt"/>
     <file role="test" name="admin_delete_records.phpt"/>
     <file role="test" name="admin_describe_topics.phpt"/>
     <file role="test" name="admin_event_type_mismatch.phpt"/>
+    <file role="test" name="admin_queue_use.phpt"/>
+    <file role="test" name="admin_topic_result_hooks.phpt"/>
+    <file role="test" name="admin_topic_result_properties.phpt"/>
     <file role="test" name="allow_null_payload_and_key.phpt"/>
     <file role="test" name="allow_null_payload.phpt"/>
     <file role="test" name="bug115.phpt"/>
@@ -173,11 +177,13 @@
     <file role="test" name="fatal_error_error_callback_consume_batch_timeout.phpt"/>
     <file role="test" name="fatal_error_get_assignment.phpt"/>
     <file role="test" name="fatal_error_kafka_consumer_consume.phpt"/>
+    <file role="test" name="fatal_error_new_admin_options.phpt"/>
     <file role="test" name="fatal_error_new_queue.phpt"/>
     <file role="test" name="fatal_error_new_topic.phpt"/>
     <file role="test" name="fatal_error_offset_commit_callback.phpt"/>
     <file role="test" name="fatal_error_producev_headers.phpt"/>
     <file role="test" name="fatal_error_queue_consume.phpt"/>
+    <file role="test" name="fatal_error_queue_poll.phpt"/>
     <file role="test" name="fatal_error_rebalance_callback_close.phpt"/>
     <file role="test" name="fatal_error_rebalance_callback_queue.phpt"/>
     <file role="test" name="fatal_error_subscribe.phpt"/>

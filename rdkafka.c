@@ -344,14 +344,15 @@ PHP_METHOD(RdKafka, newAdminOptions)
         return;
     }
 
-    options = rd_kafka_AdminOptions_new(intern->rk, (rd_kafka_admin_op_t)for_api);
-    if (!options) {
-        zend_throw_exception(ce_kafka_exception, "Failed to create AdminOptions: invalid for_api value", 0);
+    // Create the object first, so a fatal error while allocating it cannot
+    // leave the native options unowned
+    if (object_init_ex(return_value, ce_kafka_admin_options) != SUCCESS) {
         return;
     }
 
-    if (object_init_ex(return_value, ce_kafka_admin_options) != SUCCESS) {
-        rd_kafka_AdminOptions_destroy(options);
+    options = rd_kafka_AdminOptions_new(intern->rk, (rd_kafka_admin_op_t)for_api);
+    if (!options) {
+        zend_throw_exception(ce_kafka_exception, "Failed to create AdminOptions: invalid for_api value", 0);
         return;
     }
 
@@ -366,7 +367,7 @@ PHP_METHOD(RdKafka, newAdminOptions)
  * (with an exception already thrown). */
 static int rdkafka_admin_resolve_args(zval *this_ptr, zval *zqueue, zval *zoptions,
     kafka_object **out_intern,
-    rd_kafka_queue_t **out_queue,
+    kafka_queue_object **out_queue,
     rd_kafka_AdminOptions_t **out_options)
 {
     kafka_object *intern;
@@ -390,6 +391,12 @@ static int rdkafka_admin_resolve_args(zval *this_ptr, zval *zqueue, zval *zoptio
         return 0;
     }
 
+    if (queue_intern->use == KAFKA_QUEUE_MESSAGES) {
+        zend_throw_exception(ce_kafka_exception,
+            "Admin results require a queue that does not receive messages", 0);
+        return 0;
+    }
+
     if (Z_OBJ(queue_intern->zrk) != Z_OBJ_P(this_ptr)) {
         zend_throw_exception(ce_kafka_exception,
             "Queue was created from a different RdKafka handle", 0);
@@ -397,7 +404,7 @@ static int rdkafka_admin_resolve_args(zval *this_ptr, zval *zqueue, zval *zoptio
     }
 
     *out_intern = intern;
-    *out_queue = queue_intern->rkqu;
+    *out_queue = queue_intern;
     *out_options = NULL;
 
     if (zoptions) {
@@ -438,6 +445,7 @@ static void **rdkafka_admin_collect_c_ptrs(zval *zarr, zend_class_entry *ce, siz
         void *intern;
         void *cptr;
 
+        ZVAL_DEREF(zitem);
         if (Z_TYPE_P(zitem) != IS_OBJECT || !instanceof_function(Z_OBJCE_P(zitem), ce)) {
             zend_throw_exception(ce_kafka_exception, type_msg, 0);
             efree(ptrs);
@@ -464,7 +472,7 @@ PHP_METHOD(RdKafka, createTopics)
 {
     zval *znew_topics, *zqueue, *zoptions = NULL;
     kafka_object *intern;
-    rd_kafka_queue_t *queue;
+    kafka_queue_object *queue;
     rd_kafka_AdminOptions_t *options;
     rd_kafka_NewTopic_t **new_topics;
     size_t new_topic_cnt;
@@ -490,7 +498,8 @@ PHP_METHOD(RdKafka, createTopics)
         return;
     }
 
-    rd_kafka_CreateTopics(intern->rk, new_topics, new_topic_cnt, options, queue);
+    queue->use = KAFKA_QUEUE_ADMIN_RESULTS;
+    rd_kafka_CreateTopics(intern->rk, new_topics, new_topic_cnt, options, queue->rkqu);
 
     efree(new_topics);
 }
@@ -502,7 +511,7 @@ PHP_METHOD(RdKafka, deleteTopics)
 {
     zval *zdelete_topics, *zqueue, *zoptions = NULL;
     kafka_object *intern;
-    rd_kafka_queue_t *queue;
+    kafka_queue_object *queue;
     rd_kafka_AdminOptions_t *options;
     rd_kafka_DeleteTopic_t **delete_topics;
     size_t delete_topic_cnt;
@@ -528,7 +537,8 @@ PHP_METHOD(RdKafka, deleteTopics)
         return;
     }
 
-    rd_kafka_DeleteTopics(intern->rk, delete_topics, delete_topic_cnt, options, queue);
+    queue->use = KAFKA_QUEUE_ADMIN_RESULTS;
+    rd_kafka_DeleteTopics(intern->rk, delete_topics, delete_topic_cnt, options, queue->rkqu);
 
     efree(delete_topics);
 }
@@ -540,7 +550,7 @@ PHP_METHOD(RdKafka, createPartitions)
 {
     zval *znew_partitions, *zqueue, *zoptions = NULL;
     kafka_object *intern;
-    rd_kafka_queue_t *queue;
+    kafka_queue_object *queue;
     rd_kafka_AdminOptions_t *options;
     rd_kafka_NewPartitions_t **new_partitions;
     size_t new_partitions_cnt;
@@ -566,7 +576,8 @@ PHP_METHOD(RdKafka, createPartitions)
         return;
     }
 
-    rd_kafka_CreatePartitions(intern->rk, new_partitions, new_partitions_cnt, options, queue);
+    queue->use = KAFKA_QUEUE_ADMIN_RESULTS;
+    rd_kafka_CreatePartitions(intern->rk, new_partitions, new_partitions_cnt, options, queue->rkqu);
 
     efree(new_partitions);
 }
@@ -579,7 +590,7 @@ PHP_METHOD(RdKafka, describeTopics)
 {
     zval *ztopics, *zqueue, *zoptions = NULL;
     kafka_object *intern;
-    rd_kafka_queue_t *queue;
+    kafka_queue_object *queue;
     rd_kafka_AdminOptions_t *options;
     rd_kafka_TopicCollection_t *topic_collection;
     const char **topic_names;
@@ -606,8 +617,14 @@ PHP_METHOD(RdKafka, describeTopics)
 
     topic_names = ecalloc(topic_cnt, sizeof(const char *));
     ZEND_HASH_FOREACH_VAL(Z_ARRVAL_P(ztopics), zitem) {
+        ZVAL_DEREF(zitem);
         if (Z_TYPE_P(zitem) != IS_STRING) {
             zend_throw_exception(ce_kafka_exception, "All items in topics must be strings", 0);
+            efree(topic_names);
+            return;
+        }
+        if (CHECK_NULL_PATH(Z_STRVAL_P(zitem), Z_STRLEN_P(zitem))) {
+            zend_argument_value_error(1, "must not contain any null bytes");
             efree(topic_names);
             return;
         }
@@ -622,7 +639,8 @@ PHP_METHOD(RdKafka, describeTopics)
         return;
     }
 
-    rd_kafka_DescribeTopics(intern->rk, topic_collection, options, queue);
+    queue->use = KAFKA_QUEUE_ADMIN_RESULTS;
+    rd_kafka_DescribeTopics(intern->rk, topic_collection, options, queue->rkqu);
     rd_kafka_TopicCollection_destroy(topic_collection);
 }
 /* }}} */
@@ -634,7 +652,7 @@ PHP_METHOD(RdKafka, deleteRecords)
 {
     zval *ztopic_partitions, *zqueue, *zoptions = NULL;
     kafka_object *intern;
-    rd_kafka_queue_t *queue;
+    kafka_queue_object *queue;
     rd_kafka_AdminOptions_t *options;
     rd_kafka_DeleteRecords_t *del_records;
     rd_kafka_DeleteRecords_t *del_records_arr[1];
@@ -670,7 +688,8 @@ PHP_METHOD(RdKafka, deleteRecords)
     }
 
     del_records_arr[0] = del_records;
-    rd_kafka_DeleteRecords(intern->rk, del_records_arr, 1, options, queue);
+    queue->use = KAFKA_QUEUE_ADMIN_RESULTS;
+    rd_kafka_DeleteRecords(intern->rk, del_records_arr, 1, options, queue->rkqu);
 
     rd_kafka_DeleteRecords_destroy(del_records);
 }

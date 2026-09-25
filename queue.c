@@ -223,6 +223,11 @@ PHP_METHOD(RdKafka_Queue, consume)
         return;
     }
 
+    if (intern->use == KAFKA_QUEUE_ADMIN_RESULTS) {
+        zend_throw_exception(ce_kafka_exception, "RdKafka\\Queue::consume() cannot read admin results, use RdKafka\\Queue::poll()", 0);
+        return;
+    }
+
     message = rd_kafka_consume_queue(intern->rkqu, timeout_ms);
 
     if (intern->cbs->bailout) {
@@ -279,14 +284,12 @@ PHP_METHOD(RdKafka_Queue, poll)
         return;
     }
 
-    rkev = rd_kafka_queue_poll(intern->rkqu, (int)timeout_ms);
-
-    if (intern->cbs->bailout) {
-        if (rkev) {
-            rd_kafka_event_destroy(rkev);
-        }
-        kafka_conf_callbacks_raise_bailout(intern->cbs);
+    if (intern->use == KAFKA_QUEUE_MESSAGES) {
+        zend_throw_exception(ce_kafka_exception, "RdKafka\\Queue::poll() cannot read messages, use RdKafka\\Queue::consume()", 0);
+        return;
     }
+
+    rkev = rd_kafka_queue_poll(intern->rkqu, (int)timeout_ms);
 
     if (!rkev) {
         return;

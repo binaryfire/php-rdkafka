@@ -362,7 +362,7 @@ ZEND_METHOD(RdKafka_Admin_NewTopic, __construct)
     kafka_new_topic_object *intern;
     char errstr[512];
 
-    if (zend_parse_parameters(ZEND_NUM_ARGS(), "sll", &topic, &topic_len, &num_partitions, &replication_factor) == FAILURE) {
+    if (zend_parse_parameters(ZEND_NUM_ARGS(), "pll", &topic, &topic_len, &num_partitions, &replication_factor) == FAILURE) {
         return;
     }
 
@@ -392,6 +392,7 @@ static int32_t *rdkafka_admin_broker_ids_from_array(zval *zbroker_ids, size_t *o
     broker_ids = ecalloc(broker_cnt, sizeof(int32_t));
 
     ZEND_HASH_FOREACH_VAL(Z_ARRVAL_P(zbroker_ids), zbid) {
+        ZVAL_DEREF(zbid);
         if (Z_TYPE_P(zbid) != IS_LONG) {
             zend_throw_exception(ce_kafka_exception, "All items in broker_ids must be integers", 0);
             efree(broker_ids);
@@ -452,7 +453,7 @@ ZEND_METHOD(RdKafka_Admin_NewTopic, setConfig)
     kafka_new_topic_object *intern;
     rd_kafka_resp_err_t err;
 
-    if (zend_parse_parameters(ZEND_NUM_ARGS(), "ss", &name, &name_len, &value, &value_len) == FAILURE) {
+    if (zend_parse_parameters(ZEND_NUM_ARGS(), "pp", &name, &name_len, &value, &value_len) == FAILURE) {
         return;
     }
 
@@ -476,7 +477,7 @@ ZEND_METHOD(RdKafka_Admin_DeleteTopic, __construct)
     size_t topic_len;
     kafka_delete_topic_object *intern;
 
-    if (zend_parse_parameters(ZEND_NUM_ARGS(), "s", &topic, &topic_len) == FAILURE) {
+    if (zend_parse_parameters(ZEND_NUM_ARGS(), "p", &topic, &topic_len) == FAILURE) {
         return;
     }
 
@@ -499,7 +500,7 @@ ZEND_METHOD(RdKafka_Admin_NewPartitions, __construct)
     kafka_new_partitions_object *intern;
     char errstr[512];
 
-    if (zend_parse_parameters(ZEND_NUM_ARGS(), "sl", &topic, &topic_len, &new_total_count) == FAILURE) {
+    if (zend_parse_parameters(ZEND_NUM_ARGS(), "pl", &topic, &topic_len, &new_total_count) == FAILURE) {
         return;
     }
 
@@ -568,8 +569,14 @@ ZEND_METHOD(RdKafka_Admin_TopicResult, getError)
     }
 
     rdkafka_read_property(NULL, Z_OBJ_P(getThis()), "error", sizeof("error") - 1, 0, &zerr);
-    RETVAL_LONG(Z_LVAL(zerr));
-    zval_ptr_dtor(&zerr);
+
+    // Reading an uninitialized property throws instead of returning a value
+    if (Z_TYPE(zerr) != IS_LONG) {
+        zval_ptr_dtor(&zerr);
+        return;
+    }
+
+    RETURN_LONG(Z_LVAL(zerr));
 }
 /* }}} */
 
@@ -583,11 +590,13 @@ ZEND_METHOD(RdKafka_Admin_TopicResult, getErrorString)
     }
 
     rdkafka_read_property(NULL, Z_OBJ_P(getThis()), "error_string", sizeof("error_string") - 1, 0, &zerrstr);
-    if (Z_TYPE(zerrstr) == IS_NULL) {
-        RETURN_NULL();
+
+    if (Z_TYPE(zerrstr) != IS_STRING) {
+        zval_ptr_dtor(&zerrstr);
+        return;
     }
-    RETVAL_STRING(Z_STRVAL(zerrstr));
-    zval_ptr_dtor(&zerrstr);
+
+    RETURN_COPY_VALUE(&zerrstr);
 }
 /* }}} */
 
@@ -601,8 +610,13 @@ ZEND_METHOD(RdKafka_Admin_TopicResult, getName)
     }
 
     rdkafka_read_property(NULL, Z_OBJ_P(getThis()), "name", sizeof("name") - 1, 0, &zname);
-    RETVAL_STRING(Z_STRVAL(zname));
-    zval_ptr_dtor(&zname);
+
+    if (Z_TYPE(zname) != IS_STRING) {
+        zval_ptr_dtor(&zname);
+        return;
+    }
+
+    RETURN_COPY_VALUE(&zname);
 }
 /* }}} */
 
@@ -710,9 +724,12 @@ void kafka_topic_description_to_zval(zval *return_value, const rd_kafka_TopicDes
     const rd_kafka_error_t *error;
     const rd_kafka_Uuid_t *topic_id;
     const rd_kafka_TopicPartitionInfo_t **partitions;
+    const rd_kafka_AclOperation_t *authorized_operations;
     size_t partition_cnt;
+    size_t authorized_operation_cnt;
     size_t i;
     zval partitions_zv;
+    zval authorized_operations_zv;
 
     if (object_init_ex(return_value, ce_kafka_topic_description) != SUCCESS) {
         zend_throw_exception(ce_kafka_exception, "Failed to create TopicDescription", 0);
@@ -767,6 +784,19 @@ void kafka_topic_description_to_zval(zval *return_value, const rd_kafka_TopicDes
     }
     zend_update_property(NULL, Z_OBJ_P(return_value), "partitions", sizeof("partitions") - 1, &partitions_zv);
     zval_ptr_dtor(&partitions_zv);
+
+    // NULL unless requested with AdminOptions::setIncludeAuthorizedOperations()
+    authorized_operations = rd_kafka_TopicDescription_authorized_operations(topicdesc, &authorized_operation_cnt);
+    if (authorized_operations) {
+        array_init_size(&authorized_operations_zv, authorized_operation_cnt);
+        for (i = 0; i < authorized_operation_cnt; i++) {
+            add_next_index_long(&authorized_operations_zv, authorized_operations[i]);
+        }
+        zend_update_property(NULL, Z_OBJ_P(return_value), "authorized_operations", sizeof("authorized_operations") - 1, &authorized_operations_zv);
+        zval_ptr_dtor(&authorized_operations_zv);
+    } else {
+        zend_update_property_null(NULL, Z_OBJ_P(return_value), "authorized_operations", sizeof("authorized_operations") - 1);
+    }
 }
 /* }}} */
 
@@ -836,6 +866,21 @@ void kafka_admin_client_minit(INIT_FUNC_ARGS)
     REGISTER_LONG_CONSTANT("RD_KAFKA_ADMIN_OP_DELETERECORDS", RD_KAFKA_ADMIN_OP_DELETERECORDS, CONST_CS | CONST_PERSISTENT);
 #ifdef HAS_RD_KAFKA_DESCRIBE_TOPICS
     REGISTER_LONG_CONSTANT("RD_KAFKA_ADMIN_OP_DESCRIBETOPICS", RD_KAFKA_ADMIN_OP_DESCRIBETOPICS, CONST_CS | CONST_PERSISTENT);
+
+    /* Register RD_KAFKA_ACL_OPERATION_* constants, the values of TopicDescription::$authorized_operations */
+    REGISTER_LONG_CONSTANT("RD_KAFKA_ACL_OPERATION_UNKNOWN", RD_KAFKA_ACL_OPERATION_UNKNOWN, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("RD_KAFKA_ACL_OPERATION_ANY", RD_KAFKA_ACL_OPERATION_ANY, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("RD_KAFKA_ACL_OPERATION_ALL", RD_KAFKA_ACL_OPERATION_ALL, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("RD_KAFKA_ACL_OPERATION_READ", RD_KAFKA_ACL_OPERATION_READ, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("RD_KAFKA_ACL_OPERATION_WRITE", RD_KAFKA_ACL_OPERATION_WRITE, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("RD_KAFKA_ACL_OPERATION_CREATE", RD_KAFKA_ACL_OPERATION_CREATE, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("RD_KAFKA_ACL_OPERATION_DELETE", RD_KAFKA_ACL_OPERATION_DELETE, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("RD_KAFKA_ACL_OPERATION_ALTER", RD_KAFKA_ACL_OPERATION_ALTER, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("RD_KAFKA_ACL_OPERATION_DESCRIBE", RD_KAFKA_ACL_OPERATION_DESCRIBE, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("RD_KAFKA_ACL_OPERATION_CLUSTER_ACTION", RD_KAFKA_ACL_OPERATION_CLUSTER_ACTION, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("RD_KAFKA_ACL_OPERATION_DESCRIBE_CONFIGS", RD_KAFKA_ACL_OPERATION_DESCRIBE_CONFIGS, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("RD_KAFKA_ACL_OPERATION_ALTER_CONFIGS", RD_KAFKA_ACL_OPERATION_ALTER_CONFIGS, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("RD_KAFKA_ACL_OPERATION_IDEMPOTENT_WRITE", RD_KAFKA_ACL_OPERATION_IDEMPOTENT_WRITE, CONST_CS | CONST_PERSISTENT);
 #endif
 }
 /* }}} */

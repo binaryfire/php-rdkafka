@@ -235,6 +235,11 @@ PHP_METHOD(RdKafka_ConsumerTopic, consumeQueueStart)
         return;
     }
 
+    if (queue_intern->use == KAFKA_QUEUE_ADMIN_RESULTS) {
+        zend_throw_exception(spl_ce_InvalidArgumentException, "RdKafka\\ConsumerTopic::consumeQueueStart() cannot use a queue that receives admin results", 0);
+        return;
+    }
+
     kafka_intern = get_kafka_object(&intern->zrk);
     if (!kafka_intern) {
         return;
@@ -259,6 +264,7 @@ PHP_METHOD(RdKafka_ConsumerTopic, consumeQueueStart)
         return;
     }
 
+    queue_intern->use = KAFKA_QUEUE_MESSAGES;
     add_consuming_toppar(kafka_intern, intern->rkt, partition);
 }
 /* }}} */
