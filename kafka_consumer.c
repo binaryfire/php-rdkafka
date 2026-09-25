@@ -1126,7 +1126,7 @@ PHP_METHOD(RdKafka_KafkaConsumer, queryWatermarkOffsets)
 }
 /* }}} */
 
-/* {{{ proto RdKafka\TopicPartition[] RdKafka\KafkaConsumer::pausePatitions(RdKafka\TopicPartition[] $topicPartitions)
+/* {{{ proto RdKafka\TopicPartition[] RdKafka\KafkaConsumer::pausePartitions(RdKafka\TopicPartition[] $topicPartitions)
    Pause consumption for the provided list of partitions. */
 PHP_METHOD(RdKafka_KafkaConsumer, pausePartitions)
 {
@@ -1161,7 +1161,7 @@ PHP_METHOD(RdKafka_KafkaConsumer, pausePartitions)
 }
 /* }}} */
 
-/* {{{ proto RdKafka\TopicPartition[] RdKafka\KafkaConsumer::resumePatitions(RdKafka\TopicPartition[] $topicPartitions)
+/* {{{ proto RdKafka\TopicPartition[] RdKafka\KafkaConsumer::resumePartitions(RdKafka\TopicPartition[] $topicPartitions)
    Resume consumption for the provided list of partitions. */
 PHP_METHOD(RdKafka_KafkaConsumer, resumePartitions)
 {
