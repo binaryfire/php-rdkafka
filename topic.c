@@ -114,6 +114,7 @@ static zend_object *kafka_topic_new(zend_class_entry *class_type) /* {{{ */
 static void consume_callback(rd_kafka_message_t *msg, void *opaque)
 {
     php_callback *cb = (php_callback*) opaque;
+    uint32_t callback_depth;
     zval args[1];
 
     if (!opaque) {
@@ -124,11 +125,21 @@ static void consume_callback(rd_kafka_message_t *msg, void *opaque)
         return;
     }
 
-    ZVAL_NULL(&args[0]);
+    if (cb->kafka_intern->cbs.bailout) {
+        return;
+    }
 
-    kafka_message_new(&args[0], msg, NULL);
+    callback_depth = cb->kafka_intern->cbs.callback_depth;
 
-    kafka_conf_call_function(&cb->kafka_intern->cbs, cb->kafka_intern->rk, &cb->fci, &cb->fcc, 1, args, 1);
+    zend_try {
+        ZVAL_NULL(&args[0]);
+
+        kafka_message_new(&args[0], msg, NULL);
+
+        kafka_conf_call_function(&cb->kafka_intern->cbs, cb->kafka_intern->rk, &cb->fci, &cb->fcc, 1, args, 1);
+    } zend_catch {
+        kafka_conf_callbacks_defer_bailout(&cb->kafka_intern->cbs, cb->kafka_intern->rk, callback_depth, 1);
+    } zend_end_try();
 }
 
 kafka_topic_object * get_kafka_topic_object(zval *zrkt)
@@ -176,6 +187,10 @@ PHP_METHOD(RdKafka_ConsumerTopic, consumeCallback)
     result = rd_kafka_consume_callback(intern->rkt, partition, timeout_ms, consume_callback, &cb);
 
     zval_ptr_dtor(&cb.fci.function_name);
+
+    if (cb.kafka_intern->cbs.bailout) {
+        kafka_conf_callbacks_raise_bailout(&cb.kafka_intern->cbs);
+    }
 
     RETURN_LONG(result);
 }
@@ -347,6 +362,7 @@ PHP_METHOD(RdKafka_ConsumerTopic, consumeStop)
 PHP_METHOD(RdKafka_ConsumerTopic, consume)
 {
     kafka_topic_object *intern;
+    kafka_object *kafka_intern;
     zend_long partition;
     zend_long timeout_ms;
     rd_kafka_message_t *message;
@@ -366,7 +382,19 @@ PHP_METHOD(RdKafka_ConsumerTopic, consume)
         return;
     }
 
+    kafka_intern = get_kafka_object(&intern->zrk);
+    if (!kafka_intern) {
+        return;
+    }
+
     message = rd_kafka_consume(intern->rkt, partition, timeout_ms);
+
+    if (kafka_intern->cbs.bailout) {
+        if (message) {
+            rd_kafka_message_destroy(message);
+        }
+        kafka_conf_callbacks_raise_bailout(&kafka_intern->cbs);
+    }
 
     if (!message) {
         err = rd_kafka_last_error();
@@ -379,7 +407,14 @@ PHP_METHOD(RdKafka_ConsumerTopic, consume)
         return;
     }
 
-    kafka_message_new(return_value, message, NULL);
+    // A leaked message keeps its partition in use, so destroying the client
+    // would hang
+    zend_try {
+        kafka_message_new(return_value, message, NULL);
+    } zend_catch {
+        rd_kafka_message_destroy(message);
+        zend_bailout();
+    } zend_end_try();
 
     rd_kafka_message_destroy(message);
 }
@@ -390,6 +425,7 @@ PHP_METHOD(RdKafka_ConsumerTopic, consume)
 PHP_METHOD(RdKafka_ConsumerTopic, consumeBatch)
 {
     kafka_topic_object *intern;
+    kafka_object *kafka_intern;
     zend_long partition, timeout_ms, batch_size;
     long result, i;
     rd_kafka_message_t **rkmessages;
@@ -414,9 +450,22 @@ PHP_METHOD(RdKafka_ConsumerTopic, consumeBatch)
         return;
     }
 
+    kafka_intern = get_kafka_object(&intern->zrk);
+    if (!kafka_intern) {
+        return;
+    }
+
     rkmessages = safe_emalloc(batch_size, sizeof(*rkmessages), 0);
 
     result = rd_kafka_consume_batch(intern->rkt, partition, timeout_ms, rkmessages, batch_size);
+
+    if (kafka_intern->cbs.bailout) {
+        for (i = 0; i < result; ++i) {
+            rd_kafka_message_destroy(rkmessages[i]);
+        }
+        efree(rkmessages);
+        kafka_conf_callbacks_raise_bailout(&kafka_intern->cbs);
+    }
 
     if (result == -1) {
         efree(rkmessages);
@@ -429,7 +478,16 @@ PHP_METHOD(RdKafka_ConsumerTopic, consumeBatch)
     }
 
     if (result >= 0) {
-        kafka_message_list_to_array(return_value, rkmessages, result);
+        zend_try {
+            kafka_message_list_to_array(return_value, rkmessages, result);
+        } zend_catch {
+            for (i = 0; i < result; ++i) {
+                rd_kafka_message_destroy(rkmessages[i]);
+            }
+            efree(rkmessages);
+            zend_bailout();
+        } zend_end_try();
+
         for (i = 0; i < result; ++i) {
             rd_kafka_message_destroy(rkmessages[i]);
         }
@@ -578,19 +636,26 @@ PHP_METHOD(RdKafka_ProducerTopic, producev)
 
     if (headersParam != NULL && zend_hash_num_elements(headersParam) > 0) {
         headers = rd_kafka_headers_new(zend_hash_num_elements(headersParam));
-        for (zend_hash_internal_pointer_reset_ex(headersParam, &headersParamPos);
-                (header_value = zend_hash_get_current_data_ex(headersParam, &headersParamPos)) != NULL &&
-                (header_key = rdkafka_hash_get_current_key_ex(headersParam, &headersParamPos)) != NULL;
-                zend_hash_move_forward_ex(headersParam, &headersParamPos)) {
-            convert_to_string_ex(header_value);
-            rd_kafka_header_add(
-                headers,
-                header_key,
-                -1, // Auto detect header title length
-                Z_STRVAL_P(header_value),
-                Z_STRLEN_P(header_value)
-            );
-        }
+
+        // Converting a value can run PHP code, which can raise a fatal error
+        zend_try {
+            for (zend_hash_internal_pointer_reset_ex(headersParam, &headersParamPos);
+                    (header_value = zend_hash_get_current_data_ex(headersParam, &headersParamPos)) != NULL &&
+                    (header_key = rdkafka_hash_get_current_key_ex(headersParam, &headersParamPos)) != NULL;
+                    zend_hash_move_forward_ex(headersParam, &headersParamPos)) {
+                convert_to_string_ex(header_value);
+                rd_kafka_header_add(
+                    headers,
+                    header_key,
+                    -1, // Auto detect header title length
+                    Z_STRVAL_P(header_value),
+                    Z_STRLEN_P(header_value)
+                );
+            }
+        } zend_catch {
+            rd_kafka_headers_destroy(headers);
+            zend_bailout();
+        } zend_end_try();
     } else {
         headers = rd_kafka_headers_new(0);
     }

@@ -48,6 +48,22 @@ void create_kafka_error(zval *return_value, const rd_kafka_error_t *error) /* {{
 }
 /* }}} */
 
+/* Throws error as a KafkaErrorException and destroys it, also on a fatal
+ * error */
+void throw_kafka_error(zval *return_value, rd_kafka_error_t *error) /* {{{ */
+{
+    zend_try {
+        create_kafka_error(return_value, error);
+    } zend_catch {
+        rd_kafka_error_destroy(error);
+        zend_bailout();
+    } zend_end_try();
+
+    rd_kafka_error_destroy(error);
+    zend_throw_exception_object(return_value);
+}
+/* }}} */
+
 /* {{{ proto RdKafka\KafkaErrorException::__construct(string $message, int $code[, string $error_string, bool $isFatal, bool $isRetriable, bool $transactionRequiresAbort]) */
 PHP_METHOD(RdKafka_KafkaErrorException, __construct)
 {

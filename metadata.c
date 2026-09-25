@@ -217,8 +217,16 @@ void kafka_metadata_minit(INIT_FUNC_ARGS)
 void kafka_metadata_init(zval *return_value, const rd_kafka_metadata_t *metadata)
 {
     object_intern *intern;
+    zend_result result;
 
-    if (object_init_ex(return_value, ce) != SUCCESS) {
+    zend_try {
+        result = object_init_ex(return_value, ce);
+    } zend_catch {
+        rd_kafka_metadata_destroy(metadata);
+        zend_bailout();
+    } zend_end_try();
+
+    if (result != SUCCESS) {
         return;
     }
 
