@@ -15,6 +15,7 @@ $conf = new RdKafka\Conf();
 $conf->set('metadata.broker.list', getenv('TEST_KAFKA_BROKERS'));
 $conf->set('group.id', sprintf('test_rdkafka_group_%s', uniqid()));
 $conf->set('enable.auto.commit', 'false');
+$conf->set('log_level', '0');
 $conf->setOffsetCommitCb(function (RdKafka\KafkaConsumer $consumer, int $err, array $partitions) {
     echo "Offsets committed\n";
     exceedTimeLimit();

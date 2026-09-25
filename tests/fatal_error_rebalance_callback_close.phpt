@@ -14,6 +14,7 @@ produceMessages($topicName, 1);
 $conf = new RdKafka\Conf();
 $conf->set('metadata.broker.list', getenv('TEST_KAFKA_BROKERS'));
 $conf->set('group.id', sprintf('test_rdkafka_group_%s', uniqid()));
+$conf->set('log_level', '0');
 $conf->setRebalanceCb(function (RdKafka\KafkaConsumer $consumer, int $err, array $partitions) {
     if ($err === RD_KAFKA_RESP_ERR__REVOKE_PARTITIONS) {
         echo "Revoking partitions\n";

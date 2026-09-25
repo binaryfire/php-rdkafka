@@ -15,6 +15,7 @@ produceLargeMessages($topicName);
 $conf = new RdKafka\Conf();
 $conf->set('metadata.broker.list', getenv('TEST_KAFKA_BROKERS'));
 $conf->set('group.id', sprintf('test_rdkafka_group_%s', uniqid()));
+$conf->set('log_level', '0');
 $consumer = new RdKafka\KafkaConsumer($conf);
 $consumer->assign([new RdKafka\TopicPartition($topicName, 0, RD_KAFKA_OFFSET_BEGINNING)]);
 
