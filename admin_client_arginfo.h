@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: d583887405bbe376ebb4f502921cc4021fe9b8e4 */
+ * Stub hash: 799be83da768986e012250938b7774fcb868a2d8 */
 
 #if (PHP_VERSION_ID >= 80100)
 ZEND_BEGIN_ARG_WITH_TENTATIVE_RETURN_TYPE_INFO_EX(arginfo_class_RdKafka_Admin_AdminOptions_setRequestTimeout, 0, 1, IS_VOID, 0)
@@ -369,6 +369,12 @@ static zend_class_entry *register_class_RdKafka_Admin_TopicDescription(void)
 	zend_string *property_partitions_name = zend_string_init("partitions", sizeof("partitions") - 1, 1);
 	zend_declare_typed_property(class_entry, property_partitions_name, &property_partitions_default_value, ZEND_ACC_PUBLIC, NULL, (zend_type) ZEND_TYPE_INIT_MASK(MAY_BE_ARRAY));
 	zend_string_release(property_partitions_name);
+
+	zval property_authorized_operations_default_value;
+	ZVAL_UNDEF(&property_authorized_operations_default_value);
+	zend_string *property_authorized_operations_name = zend_string_init("authorized_operations", sizeof("authorized_operations") - 1, 1);
+	zend_declare_typed_property(class_entry, property_authorized_operations_name, &property_authorized_operations_default_value, ZEND_ACC_PUBLIC, NULL, (zend_type) ZEND_TYPE_INIT_MASK(MAY_BE_ARRAY|MAY_BE_NULL));
+	zend_string_release(property_authorized_operations_name);
 
 	return class_entry;
 }

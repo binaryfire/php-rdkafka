@@ -109,5 +109,8 @@ class TopicDescription
 
     /** @var TopicPartitionInfo[] */
     public array $partitions;
+
+    /** @var int[]|null */
+    public ?array $authorized_operations;
 }
 #endif
