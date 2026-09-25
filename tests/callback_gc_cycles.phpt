@@ -77,6 +77,43 @@ function consumerQueueCallbackCycle(): WeakReference
     return WeakReference::create($consumer);
 }
 
+function producerAdminOptionsCallbackCycle(): WeakReference
+{
+    $conf = new RdKafka\Conf();
+    $conf->set('log_level', '0');
+
+    $capture = new stdClass();
+    $conf->setErrorCb(function () use ($capture) { });
+
+    $producer = new RdKafka\Producer($conf);
+    $capture->options = $producer->newAdminOptions(RD_KAFKA_ADMIN_OP_DELETETOPICS);
+
+    return WeakReference::create($producer);
+}
+
+function producerEventCallbackCycle(): WeakReference
+{
+    $conf = new RdKafka\Conf();
+    $conf->set('log_level', '0');
+
+    $capture = new stdClass();
+    $conf->setErrorCb(function () use ($capture) { });
+
+    $producer = new RdKafka\Producer($conf);
+    $queue = $producer->newQueue();
+    $options = $producer->newAdminOptions(RD_KAFKA_ADMIN_OP_DELETETOPICS);
+    $options->setRequestTimeout(100);
+
+    // Without a broker the request times out, which still delivers a result
+    $producer->deleteTopics([new RdKafka\Admin\DeleteTopic('callback-gc')], $queue, $options);
+    $capture->event = $queue->poll(5000);
+    if ($capture->event === null) {
+        throw new RuntimeException('No admin result');
+    }
+
+    return WeakReference::create($producer);
+}
+
 function kafkaConsumerCallbackCycle(): WeakReference
 {
     $conf = new RdKafka\Conf();
@@ -148,6 +185,12 @@ var_dump(isCollected(producerTopicCallbackCycle()));
 echo "Consumer queue callback cycle\n";
 var_dump(isCollected(consumerQueueCallbackCycle()));
 
+echo "Producer admin options callback cycle\n";
+var_dump(isCollected(producerAdminOptionsCallbackCycle()));
+
+echo "Producer event callback cycle\n";
+var_dump(isCollected(producerEventCallbackCycle()));
+
 echo "KafkaConsumer callback cycle\n";
 var_dump(isCollected(kafkaConsumerCallbackCycle()));
 
@@ -186,6 +229,10 @@ bool(true)
 Producer topic callback cycle
 bool(true)
 Consumer queue callback cycle
+bool(true)
+Producer admin options callback cycle
+bool(true)
+Producer event callback cycle
 bool(true)
 KafkaConsumer callback cycle
 bool(true)

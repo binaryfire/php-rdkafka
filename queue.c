@@ -31,6 +31,7 @@
 #include "topic.h"
 #include "queue.h"
 #include "message.h"
+#include "event.h"
 #include "queue_arginfo.h"
 
 #ifndef PHP_WIN32
@@ -250,6 +251,48 @@ PHP_METHOD(RdKafka_Queue, consume)
     } zend_end_try();
 
     rd_kafka_message_destroy(message);
+}
+/* }}} */
+
+/* {{{ proto ?RdKafka\Event RdKafka\Queue::poll(int $timeout_ms)
+   Wait for an event on the queue. Returns null on timeout. The returned
+   Event takes ownership of the librdkafka event and frees it on destruction. */
+PHP_METHOD(RdKafka_Queue, poll)
+{
+    kafka_queue_object *intern;
+    zend_long timeout_ms;
+    rd_kafka_event_t *rkev;
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS(), "l", &timeout_ms) == FAILURE) {
+        return;
+    }
+
+    intern = get_kafka_queue_object(getThis());
+    if (!intern) {
+        return;
+    }
+
+    // Events polled from a client's own queues would bypass its delivery
+    // report and rebalance callbacks, or return fetched messages as events
+    if (intern->registry_key) {
+        zend_throw_exception(ce_kafka_exception, "RdKafka\\Queue::poll() requires a queue created by RdKafka::newQueue()", 0);
+        return;
+    }
+
+    rkev = rd_kafka_queue_poll(intern->rkqu, (int)timeout_ms);
+
+    if (intern->cbs->bailout) {
+        if (rkev) {
+            rd_kafka_event_destroy(rkev);
+        }
+        kafka_conf_callbacks_raise_bailout(intern->cbs);
+    }
+
+    if (!rkev) {
+        return;
+    }
+
+    kafka_event_new(return_value, rkev, &intern->zrk);
 }
 /* }}} */
 

@@ -17,6 +17,9 @@ class Queue
     public function consume(int $timeout_ms): ?Message {}
 
     /** @tentative-return-type */
+    public function poll(int $timeout_ms): ?Event {}
+
+    /** @tentative-return-type */
     public function getLength(): int {}
 
 #ifndef PHP_WIN32

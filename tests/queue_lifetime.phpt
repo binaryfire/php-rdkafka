@@ -109,6 +109,13 @@ expectException(fn () => $topic->consumeQueueStart(0, RD_KAFKA_OFFSET_BEGINNING,
 expectException(fn () => $topic->consumeQueueStart(0, RD_KAFKA_OFFSET_BEGINNING, $kafkaConsumer->getConsumerQueue()));
 expectException(fn () => $topic->consumeQueueStart(0, RD_KAFKA_OFFSET_BEGINNING, $kafkaConsumer->splitPartitionQueue('queue-lifetime', 0)));
 
+echo "Only new queues can poll events or receive admin results\n";
+expectException(fn () => $producer->getMainQueue()->poll(0));
+expectException(fn () => $kafkaConsumer->getConsumerQueue()->poll(0));
+expectException(fn () => $kafkaConsumer->splitPartitionQueue('queue-lifetime', 0)->poll(0));
+expectException(fn () => $producer->deleteTopics([new RdKafka\Admin\DeleteTopic('queue-lifetime')], $producer->getMainQueue()));
+expectException(fn () => $consumer->deleteTopics([new RdKafka\Admin\DeleteTopic('queue-lifetime')], $kafkaConsumer->getConsumerQueue()));
+
 ?>
 --EXPECTF--
 Shared queues
@@ -144,3 +151,9 @@ Only new queues can receive a legacy topic's messages
 InvalidArgumentException: RdKafka\ConsumerTopic::consumeQueueStart() requires a queue created by RdKafka\Consumer::newQueue()
 InvalidArgumentException: RdKafka\ConsumerTopic::consumeQueueStart() requires a queue created by RdKafka\Consumer::newQueue()
 InvalidArgumentException: RdKafka\ConsumerTopic::consumeQueueStart() requires a queue created by RdKafka\Consumer::newQueue()
+Only new queues can poll events or receive admin results
+RdKafka\Exception: RdKafka\Queue::poll() requires a queue created by RdKafka::newQueue()
+RdKafka\Exception: RdKafka\Queue::poll() requires a queue created by RdKafka::newQueue()
+RdKafka\Exception: RdKafka\Queue::poll() requires a queue created by RdKafka::newQueue()
+RdKafka\Exception: Admin results require a queue created by RdKafka::newQueue()
+RdKafka\Exception: Admin results require a queue created by RdKafka::newQueue()
