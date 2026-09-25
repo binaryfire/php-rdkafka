@@ -57,7 +57,26 @@ printf("isr count >= 1: %s\n", count($part->isr) >= 1 ? 'true' : 'false');
 printf("isr[0] class: %s\n", get_class($part->isr[0]));
 printf("replicas count >= 1: %s\n", count($part->replicas) >= 1 ? 'true' : 'false');
 printf("replicas[0] class: %s\n", get_class($part->replicas[0]));
+printf("authorized_operations: %s\n", var_export($desc->authorized_operations, true));
 unset($event);
+
+// DESCRIBE with authorized operations, from a list whose elements are references
+$opts->setIncludeAuthorizedOperations(true);
+$topicNames = [$topicName];
+foreach ($topicNames as &$name) {
+}
+unset($name);
+$producer->describeTopics($topicNames, $queue, $opts);
+$desc = $queue->poll(10000)->getDescribeTopicsResult()[0];
+printf("name matches: %s\n", $desc->name === $topicName ? 'true' : 'false');
+printf("authorized to describe: %s\n", in_array(RD_KAFKA_ACL_OPERATION_DESCRIBE, $desc->authorized_operations, true) ? 'true' : 'false');
+
+try {
+    $producer->describeTopics([$topicName . "\0suffix"], $queue, $opts);
+} catch (ValueError $e) {
+    echo $e->getMessage(), "\n";
+}
+var_dump($queue->poll(0));
 
 // CLEANUP
 $opts = $producer->newAdminOptions(RD_KAFKA_ADMIN_OP_DELETETOPICS);
@@ -84,4 +103,9 @@ isr count >= 1: true
 isr[0] class: RdKafka\Admin\Node
 replicas count >= 1: true
 replicas[0] class: RdKafka\Admin\Node
+authorized_operations: NULL
+name matches: true
+authorized to describe: true
+RdKafka::describeTopics(): Argument #1 ($topics) must not contain any null bytes
+NULL
 OK
