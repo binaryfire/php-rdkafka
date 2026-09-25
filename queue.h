@@ -16,10 +16,20 @@
   +----------------------------------------------------------------------+
 */
 
+// A queue from newQueue() either receives a legacy topic's messages, read with
+// consume(), or admin results, read with poll(). Each reader aborts or drops
+// the other kind.
+typedef enum {
+    KAFKA_QUEUE_UNASSIGNED = 0,
+    KAFKA_QUEUE_MESSAGES,
+    KAFKA_QUEUE_ADMIN_RESULTS
+} kafka_queue_use;
+
 typedef struct _kafka_queue_object {
     rd_kafka_queue_t    *rkqu;
     HashTable           *registry;
     zend_string         *registry_key;
+    kafka_queue_use     use;
     kafka_conf_callbacks *cbs;
 #ifndef PHP_WIN32
     int                 io_event_fd;
