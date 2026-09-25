@@ -162,6 +162,23 @@ $producer->poll(0);
 
 var_dump($reports);
 
+echo "Notifies admin results\n";
+$adminQueue = $producer->newQueue();
+[$adminRead, $adminWrite] = notificationPair();
+$adminQueue->ioEventEnable($adminWrite);
+
+// Without a broker the request times out, which still delivers a result
+$options = $producer->newAdminOptions(RD_KAFKA_ADMIN_OP_DELETETOPICS);
+$options->setRequestTimeout(100);
+$producer->deleteTopics([new RdKafka\Admin\DeleteTopic('queue-io-event')], $adminQueue, $options);
+
+$readable = [$adminRead];
+$writable = [];
+$exceptional = [];
+var_dump(stream_select($readable, $writable, $exceptional, 5));
+var_dump(bin2hex(fread($adminRead, 1024)));
+var_dump($adminQueue->poll(0)->getType() === RD_KAFKA_EVENT_DELETETOPICS_RESULT);
+
 ?>
 --EXPECT--
 Notifies a valid stream
@@ -187,3 +204,7 @@ string(5) "ready"
 Disabling ignores the payload and can be repeated
 string(0) ""
 int(4)
+Notifies admin results
+int(1)
+string(2) "01"
+bool(true)
