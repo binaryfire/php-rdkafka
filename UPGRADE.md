@@ -60,6 +60,14 @@ After catching a callback exception, call `poll()`, `consume()` or `consumeCallb
 
 Calling `__construct()` again on an `RdKafka\Producer`, `RdKafka\Consumer` or `RdKafka\KafkaConsumer` that was constructed successfully now throws `RdKafka\Exception` with code `RD_KAFKA_RESP_ERR__STATE`, including after `KafkaConsumer::close()`. Create a new object instead.
 
+### Header arrays passed to `producev()`
+
+If you pass a list of arrays as `$headers`, check its shape. A list whose first element is an array now selects ordered pairs. Each pair must contain exactly two entries: a string name at index `0` and a string or null value at index `1`. Malformed pairs throw `InvalidArgumentException`. This input shape used to send no headers. Ordinary header maps keep their existing value coercion.
+
+### Serialized messages
+
+`Message` has a new private `native_headers` property. Update tests or tooling that compare exact object dumps or serialized output. Messages serialized by an earlier version can still be read; they do not need to be rewritten.
+
 ### Conf::dump() does not include topic-level properties
 
 `Conf::set()` accepts both global and topic-level properties, silently routing topic-level properties to an embedded `default_topic_conf`. However, `Conf::dump()` only returns global configuration properties.
