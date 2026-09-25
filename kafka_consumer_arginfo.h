@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: c2269c2c1cfb3d55801060b2fdb76b6ddb911aae */
+ * Stub hash: d5b318bdded21b9cbc26f55fe5668018fc1807f9 */
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_class_RdKafka_KafkaConsumer___construct, 0, 0, 1)
 	ZEND_ARG_OBJ_INFO(0, conf, RdKafka\\Conf, 0)
@@ -169,7 +169,7 @@ ZEND_BEGIN_ARG_WITH_TENTATIVE_RETURN_TYPE_INFO_EX(arginfo_class_RdKafka_KafkaCon
 ZEND_BEGIN_ARG_INFO_EX(arginfo_class_RdKafka_KafkaConsumer_oauthbearerSetToken, 0, 0, 3)
 #endif
 	ZEND_ARG_TYPE_INFO(0, token_value, IS_STRING, 0)
-	ZEND_ARG_TYPE_INFO(0, lifetime_ms, IS_LONG, 0)
+	ZEND_ARG_TYPE_MASK(0, lifetime_ms, MAY_BE_LONG|MAY_BE_DOUBLE|MAY_BE_STRING, NULL)
 	ZEND_ARG_TYPE_INFO(0, principal_name, IS_STRING, 0)
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, extensions, IS_ARRAY, 0, "[]")
 ZEND_END_ARG_INFO()

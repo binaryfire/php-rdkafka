@@ -126,6 +126,7 @@
     <file role="test" name="callback_exception_consumer.phpt"/>
     <file role="test" name="callback_exception_producer.phpt"/>
     <file role="test" name="callback_gc_cycles.phpt"/>
+    <file role="test" name="callback_string_callable.phpt"/>
     <file role="test" name="conf_callbacks_integration.phpt"/>
     <file role="test" name="conf_callbacks_rdkafka11.phpt"/>
     <file role="test" name="conf_callbacks.phpt"/>
@@ -173,6 +174,7 @@
     <file role="test" name="kafka_consumer_close_in_callback.phpt"/>
     <file role="test" name="kafka_consumer_close_in_rebalance_callback.phpt"/>
     <file role="test" name="kafka_consumer_close_rebalance_exception.phpt"/>
+    <file role="test" name="kafka_consumer_closed_during_argument_conversion.phpt"/>
     <file role="test" name="kafka_consumer_commit_message_properties.phpt"/>
     <file role="test" name="kafka_consumer_destruct_assigned.phpt"/>
     <file role="test" name="kafka_consumer_get_rebalance_protocol.phpt"/>
@@ -180,6 +182,7 @@
     <file role="test" name="kafka_consumer_split_partition_queue.phpt"/>
     <file role="test" name="kafka_consumer_split_partition_queue_fetching.phpt"/>
     <file role="test" name="kafka_consumer_split_partition_queue_liveness.phpt"/>
+    <file role="test" name="kafka_consumer_subscribe_topics.phpt"/>
     <file role="test" name="kafka_consumer_topic_lifetime.phpt"/>
     <file role="test" name="kafka_error_exception.phpt"/>
     <file role="test" name="message_error_timestamp.phpt"/>
@@ -192,9 +195,11 @@
     <file role="test" name="metadata_collection_001.phpt"/>
     <file role="test" name="metadata_partition_001.phpt"/>
     <file role="test" name="metadata_topic_001.phpt"/>
+    <file role="test" name="native_string_null_bytes.phpt"/>
     <file role="test" name="new_topic_with_conf.phpt"/>
     <file role="test" name="oauthbearer_integration.phpt"/>
     <file role="test" name="oauthbearer_integration_hl.phpt"/>
+    <file role="test" name="oauthbearer_set_token_arguments.phpt"/>
     <file role="test" name="pause_resume.phpt"/>
     <file role="test" name="produce_consume.phpt"/>
     <file role="test" name="produce_consume_queue.phpt"/>
@@ -225,6 +230,7 @@
     <file role="test" name="topic_conf.phpt"/>
     <file role="test" name="topic_partition_001.phpt"/>
     <file role="test" name="topic_partition_002.phpt"/>
+    <file role="test" name="topic_partition_list_argument.phpt"/>
    </dir>
   </dir>
  </contents>
