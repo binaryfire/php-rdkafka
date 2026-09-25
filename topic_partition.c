@@ -160,6 +160,22 @@ void kafka_topic_partition_list_to_array(zval *return_value, rd_kafka_topic_part
     }
 } /* }}} */
 
+/* Like kafka_topic_partition_list_to_array(), for a list the caller owns.
+ * Destroys the list, also on a fatal error: some lists returned by
+ * librdkafka keep their partitions in use, and destroying the client would
+ * wait for them forever. */
+void kafka_topic_partition_list_to_array_and_destroy(zval *return_value, rd_kafka_topic_partition_list_t *list) /* {{{ */
+{
+    zend_try {
+        kafka_topic_partition_list_to_array(return_value, list);
+    } zend_catch {
+        rd_kafka_topic_partition_list_destroy(list);
+        zend_bailout();
+    } zend_end_try();
+
+    rd_kafka_topic_partition_list_destroy(list);
+} /* }}} */
+
 rd_kafka_topic_partition_list_t * array_arg_to_kafka_topic_partition_list(int argnum, HashTable *ary) { /* {{{ */
 
     HashPosition pos;

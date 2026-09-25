@@ -32,6 +32,7 @@ kafka_topic_partition_intern * get_topic_partition_object(zval *z);
 void kafka_topic_partition_init(zval *z, char *topic, int32_t partition, int64_t offset, rd_kafka_resp_err_t err);
 
 void kafka_topic_partition_list_to_array(zval *return_value, rd_kafka_topic_partition_list_t *list);
+void kafka_topic_partition_list_to_array_and_destroy(zval *return_value, rd_kafka_topic_partition_list_t *list);
 rd_kafka_topic_partition_list_t * array_arg_to_kafka_topic_partition_list(int argnum, HashTable *ary);
 
 extern zend_class_entry * ce_kafka_topic_partition;
