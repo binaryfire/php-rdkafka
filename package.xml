@@ -136,12 +136,32 @@
     <file role="test" name="construct_twice.phpt"/>
     <file role="test" name="controller_id.phpt"/>
     <file role="test" name="err2name.phpt"/>
+    <file role="test" name="fatal_error_commit_transaction.phpt"/>
+    <file role="test" name="fatal_error_conf_dump.phpt"/>
+    <file role="test" name="fatal_error_consume.phpt"/>
+    <file role="test" name="fatal_error_consume_batch.phpt"/>
+    <file role="test" name="fatal_error_consume_callback.phpt"/>
+    <file role="test" name="fatal_error_delivery_report_callback.phpt"/>
+    <file role="test" name="fatal_error_error_callback_consume_batch.phpt"/>
+    <file role="test" name="fatal_error_error_callback_consume_batch_timeout.phpt"/>
+    <file role="test" name="fatal_error_get_assignment.phpt"/>
+    <file role="test" name="fatal_error_kafka_consumer_consume.phpt"/>
+    <file role="test" name="fatal_error_new_queue.phpt"/>
+    <file role="test" name="fatal_error_new_topic.phpt"/>
+    <file role="test" name="fatal_error_offset_commit_callback.phpt"/>
+    <file role="test" name="fatal_error_producev_headers.phpt"/>
+    <file role="test" name="fatal_error_queue_consume.phpt"/>
+    <file role="test" name="fatal_error_rebalance_callback_close.phpt"/>
+    <file role="test" name="fatal_error_rebalance_callback_queue.phpt"/>
+    <file role="test" name="fatal_error_subscribe.phpt"/>
     <file role="test" name="init_transaction_not_configured.phpt"/>
     <dir name="helpers">
      <file role="test" name="close-async-handoff.php"/>
+     <file role="test" name="fatal-error.php"/>
      <file role="test" name="fenced-consumer.php"/>
      <file role="test" name="integration-tests-check.php"/>
      <file role="test" name="kip848-integration-tests-check.php"/>
+     <file role="test" name="memory-limit-check.php"/>
      <file role="test" name="oauth-integration-tests-check.php"/>
      <file role="test" name="split-partition-queue.php"/>
     </dir>
