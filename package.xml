@@ -208,6 +208,7 @@
     <file role="test" name="kafka_consumer_close_in_rebalance_callback.phpt"/>
     <file role="test" name="kafka_consumer_close_rebalance_exception.phpt"/>
     <file role="test" name="kafka_consumer_closed_during_argument_conversion.phpt"/>
+    <file role="test" name="kafka_consumer_commit_async_without_assignment.phpt"/>
     <file role="test" name="kafka_consumer_commit_message_properties.phpt"/>
     <file role="test" name="kafka_consumer_consume_returns_message_on_eof.phpt"/>
     <file role="test" name="kafka_consumer_consume_returns_null_on_timeout.phpt"/>
