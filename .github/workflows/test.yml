@@ -5,6 +5,7 @@ on:
         branches:
             - '6.x'
             - '7.x'
+            - '7.x-integration'
     pull_request:
     schedule:
         - cron: '30 8 * * 1'
