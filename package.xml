@@ -146,11 +146,13 @@
      <file role="test" name="oauth-integration-tests-check.php"/>
     </dir>
     <file role="test" name="kafka_consumer_close_destroy.phpt"/>
+    <file role="test" name="kafka_consumer_commit_message_properties.phpt"/>
     <file role="test" name="kafka_consumer_consume_returns_message_on_eof.phpt"/>
     <file role="test" name="kafka_consumer_consume_returns_null_on_timeout.phpt"/>
     <file role="test" name="kafka_consumer_get_rebalance_protocol.phpt"/>
     <file role="test" name="kafka_consumer_new_topic_no_memleak.phpt"/>
     <file role="test" name="kafka_error_exception.phpt"/>
+    <file role="test" name="message_errstr_properties.phpt"/>
     <file role="test" name="message_headers.phpt"/>
     <file role="test" name="metadata_001.phpt"/>
     <file role="test" name="metadata_broker_001.phpt"/>
