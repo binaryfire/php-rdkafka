@@ -27,7 +27,7 @@ $topicPartition = new RdKafka\TopicPartition('valid', 0);
 
 $message = new RdKafka\Message();
 $message->err = RD_KAFKA_RESP_ERR_NO_ERROR;
-$message->topic_name = "topic\0name";
+$message->topic_name = str_repeat("topic\0", 2);
 $message->partition = 0;
 $message->offset = 0;
 
