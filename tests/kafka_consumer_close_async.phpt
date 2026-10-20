@@ -45,8 +45,8 @@ $consumer->closeAsync();
 waitUntilClosed($consumer);
 var_dump($consumer->isClosed());
 
-echo "The closed group is reported\n";
-expectException(fn () => $consumer->getRebalanceProtocol());
+echo "No rebalance protocol after the group closed\n";
+var_dump($consumer->getRebalanceProtocol());
 
 echo "Final close after the consumer closed\n";
 $consumer->close();
@@ -76,8 +76,8 @@ echo "Done\n";
 Closing asynchronously
 bool(false)
 bool(true)
-The closed group is reported
-RdKafka\Exception: The consumer group has been closed
+No rebalance protocol after the group closed
+string(0) ""
 Final close after the consumer closed
 Exception: RdKafka\KafkaConsumer::__construct() has not been called, or RdKafka\KafkaConsumer::close() was already called
 Final close while the consumer is closing

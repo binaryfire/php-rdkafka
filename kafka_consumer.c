@@ -1217,7 +1217,7 @@ PHP_METHOD(RdKafka_KafkaConsumer, oauthbearerSetTokenFailure)
 /* }}} */
 
 /* {{{ proto string RdKafka\KafkaConsumer::getRebalanceProtocol()
-   Returns the current consumer group rebalance protocol ("NONE", "EAGER", or "COOPERATIVE") */
+   Returns the current consumer group rebalance protocol ("NONE", "EAGER", or "COOPERATIVE"), or "" if unavailable */
 PHP_METHOD(RdKafka_KafkaConsumer, getRebalanceProtocol)
 {
     object_intern *intern;
@@ -1230,15 +1230,9 @@ PHP_METHOD(RdKafka_KafkaConsumer, getRebalanceProtocol)
         return;
     }
 
-    // NULL once the consumer group has closed, which can happen before
-    // close() destroys the client
+    // Pending rebalance callbacks can run after the consumer group has closed
     protocol = rd_kafka_rebalance_protocol(intern->rk);
-    if (!protocol) {
-        zend_throw_exception(ce_kafka_exception, "The consumer group has been closed", RD_KAFKA_RESP_ERR__STATE);
-        return;
-    }
-
-    RETURN_STRING(protocol);
+    RETURN_STRING(protocol ? protocol : "");
 }
 /* }}} */
 
