@@ -225,6 +225,7 @@
     <file role="test" name="kafka_consumer_topic_lifetime.phpt"/>
     <file role="test" name="kafka_error_exception.phpt"/>
     <file role="test" name="message_error_timestamp.phpt"/>
+    <file role="test" name="message_errstr_properties.phpt"/>
     <file role="test" name="message_header_pairs.phpt"/>
     <file role="test" name="message_header_pairs_map.phpt"/>
     <file role="test" name="message_headers.phpt"/>
